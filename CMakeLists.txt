@@ -17,7 +17,7 @@ if(NOT WIN32)
 endif(NOT WIN32)
 
 option( USE_GUI     "don't build netgen with GUI" ON )
-option( USE_PYTHON  "link boost python, necessary for ngsolve" ON )
+option( USE_PYTHON  "link boost python, necessary for ngsolve" OFF )
 option( USE_MPI     "enable mpi parallelization" OFF )
 option( USE_OCC     "(not supported) compile with OpenCascade geometry kernel" OFF)
 option( USE_JPEG    "enable snapshots using library libjpeg" OFF )
