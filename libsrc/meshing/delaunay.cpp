@@ -246,7 +246,7 @@ namespace netgen
   void AddDelaunayPoint (PointIndex newpi, const Point3d & newp, 
 			 Array<DelaunayTet> & tempels, 
 			 Mesh & mesh,
-			 Box3dTree & tettree, 
+			 BoxTree<3> & tettree, 
 			 MeshNB & meshnb,
 			 Array<Point<3> > & centers, Array<double> & radi2,
 			 Array<int> & connected, Array<int> & treesearch, 
@@ -415,9 +415,9 @@ namespace netgen
 
 		      INDEX_3 i3 = tempels.Get(helind).GetFace (k-1);
 
-		      const Point3d & p1 = mesh.Point ( i3.I1());
-		      const Point3d & p2 = mesh.Point ( i3.I2());
-		      const Point3d & p3 = mesh.Point ( i3.I3());
+		      const Point3d & p1 = mesh.Point ( PointIndex (i3.I1()) );
+		      const Point3d & p2 = mesh.Point ( PointIndex (i3.I2()) );
+		      const Point3d & p3 = mesh.Point ( PointIndex (i3.I3()) );
 
 
 		      Vec3d v1(p1, p2);
@@ -503,7 +503,8 @@ namespace netgen
 	for (int k = 0; k < 4; k++)
 	  tempels.Elem(celind)[k] = -1;
         
-	((ADTree6&)tettree.Tree()).DeleteElement (celind);
+	// ((ADTree6&)tettree.Tree()).DeleteElement (celind);
+        tettree.DeleteElement (celind);
 	freelist.Append (celind);
       }
 
@@ -612,20 +613,20 @@ namespace netgen
     for (int i = 1; i <= adfront->GetNF(); i++)
       {
 	const MiniElement2d & face = adfront->GetFace(i);
-	for (int j = 0; j < face.GetNP(); j++)
+        for (PointIndex pi : face.PNums())
 	  {
-	    pmin.SetToMin  (mesh.Point (face[j]));
-	    pmax.SetToMax  (mesh.Point (face[j]));
+	    pmin.SetToMin  (mesh.Point (pi));
+	    pmax.SetToMax  (mesh.Point (pi));
 	  }
       }
   
-    for (int i = 0; i < mesh.LockedPoints().Size(); i++)
+    for (PointIndex pi : mesh.LockedPoints())
       {
-	pmin.SetToMin (mesh.Point (mesh.LockedPoints()[i]));
-	pmax.SetToMax (mesh.Point (mesh.LockedPoints()[i]));
+	pmin.SetToMin (mesh.Point (pi));
+	pmax.SetToMax (mesh.Point (pi));
       }
-  
-
+    
+    
 
     Vec3d vdiag(pmin, pmax);
     // double r1 = vdiag.Length();
@@ -680,7 +681,7 @@ namespace netgen
     pmin2 = pmin2 + 0.1 * (pmin2 - pmax2);
     pmax2 = pmax2 + 0.1 * (pmax2 - pmin2);
 
-    Box3dTree tettree(pmin2, pmax2);
+    BoxTree<3> tettree(pmin2, pmax2);
 
 
     tempels.Append (startel);
@@ -1110,7 +1111,7 @@ namespace netgen
     PrintMessage (3, "Remove intersecting");
     if (openels.Size())
       {
-	Box3dTree setree(pmin, pmax);
+	BoxTree<3> setree(pmin, pmax);
 
 	/*      
 		cout << "open elements in search tree: " << openels.Size() << endl;

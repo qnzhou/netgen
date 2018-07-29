@@ -29,7 +29,7 @@ namespace netgen
     bool operator != (ArrayRangeIterator d2) { return ind != d2.ind; }
   };
 
-  /// a range of intergers
+  /// a range of integers
   template <typename T>
   class T_Range
   {
@@ -267,6 +267,15 @@ namespace netgen
 	(*this)[i] = a2[i];
     }
 
+    /// array move
+    Array (Array && a2)
+      : FlatArray<T,BASE,TIND> (a2.size, a2.data), allocsize(a2.allocsize), ownmem(a2.ownmem)
+    {
+      a2.size = 0;
+      a2.data = nullptr;
+      a2.allocsize = 0;
+      a2.ownmem = false;
+    }
 
 
     /// if responsible, deletes memory
@@ -293,13 +302,13 @@ namespace netgen
 
 
     /// Add element at end of array. reallocation if necessary.
-    int Append (const T & el)
+    void Append (const T & el)
     {
       if (size == allocsize) 
 	ReSize (size+1);
       data[size] = el;
       size++;
-      return size;
+      // return size;
     }
 
     template <typename T2, int B2>
@@ -320,7 +329,7 @@ namespace netgen
       RangeCheck (i+1);
 #endif
 
-      data[i] = data[size-1];
+      data[i] = std::move(data[size-1]);
       size--;
       //    DeleteElement (i+1);
     }
@@ -333,7 +342,7 @@ namespace netgen
       RangeCheck (i);
 #endif
 
-      data[i-1] = data[size-1];
+      data[i-1] = std::move(data[size-1]);
       size--;
     }
 
@@ -377,7 +386,15 @@ namespace netgen
       return *this;
     }
 
-
+    Array & operator= (Array && a2)
+    {
+      Swap (data, a2.data);
+      Swap (size, a2.size);
+      Swap (allocsize, a2.allocsize);
+      Swap (ownmem, a2.ownmem);
+      return *this;
+    }
+    
   private:
 
     /// resize array, at least to size minsize. copy contents
@@ -391,7 +408,16 @@ namespace netgen
 	  T * p = new T[nsize];
 	
 	  int mins = (nsize < size) ? nsize : size; 
-	  memcpy (p, data, mins * sizeof(T));
+          // memcpy (p, data, mins * sizeof(T));
+
+#if defined(__GNUG__) && __GNUC__ < 5 && !defined(__clang__)
+          for (size_t i = 0; i < mins; i++) p[i] = move(data[i]);
+#else
+          if (std::is_trivially_copyable<T>::value)
+            memcpy (p, data, sizeof(T)*mins);
+          else
+            for (size_t i = 0; i < mins; i++) p[i] = move(data[i]);
+#endif
 
 	  if (ownmem)
 	    delete [] data;

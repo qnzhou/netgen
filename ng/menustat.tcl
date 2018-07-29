@@ -1,3 +1,12 @@
+if { $tcl_platform(os) eq "Linux" && [tk scaling] > 1.5 } {
+  # On some Linux systems, the scaling setting is only applied after
+  # overwriting some default font settings.
+  # This is a workaround to scale up fonts on high resolution displays.
+  font create ngFont -family Helvetica
+  option add *font ngFont
+  ttk::style configure "." -font ngFont
+}
+
 # netgen menus:
 
 menu .ngmenu -tearoff 0  -relief raised -bd 2
@@ -310,7 +319,7 @@ proc demoredraw { } {
     global videoactive
     if { $videoactive == 1 } {
         puts "addframe"
-        .ndraw Ng_VideoClip addframe
+        Ng_VideoClip .ndraw addframe
     }
     if { $result == 0 && $stopdemo == 0 } {
 	after 1 { demoredraw }
@@ -343,7 +352,7 @@ proc demoredraw { } {
 	set file [tk_getSaveFile -filetypes $types]
 #  -defaultextension ".ppm"]
 	if {$file != ""} {
-	    .ndraw Ng_SnapShot $file }
+	    Ng_SnapShot .ndraw $file }
     }
 
 
@@ -358,14 +367,14 @@ set videoactive 0
  	}
  	set file [tk_getSaveFile -filetypes $types]
  	if {$file != ""} {
- 	    .ndraw Ng_VideoClip init $file 
+ 	    Ng_VideoClip .ndraw init $file 
             global videoactive
             set videoactive 1
         }
      }
 
 .ngmenu.file.video add command -label "add frame..." \
-    -command {.ndraw Ng_VideoClip addframe }
+    -command {Ng_VideoClip .ndraw addframe }
 
 .ngmenu.file.video add command -label "one cycle" \
     -command {
@@ -374,14 +383,14 @@ set videoactive 0
 	    puts "j =  $j"
 	    Ng_Vis_Set time [expr (1000 * $j / 100)]
 	    redraw
-	    .ndraw Ng_VideoClip addframe 
+	    Ng_VideoClip .ndraw addframe 
 	    after 200
 	}
     }
 
 .ngmenu.file.video add command -label "finalize..." \
     -command {
-        .ndraw Ng_VideoClip finalize 
+        Ng_VideoClip .ndraw finalize 
         global videoactive
         set videoactive 0
     }
@@ -397,7 +406,7 @@ set videoactive 0
 .ngmenu.file add separator
 
 
-## herbert tcl load menue
+## herbert tcl load menu
 # .ngmenu.file add command -label "Run tests ..." \
 \#    -command { runtestdialog }
 ##
@@ -412,6 +421,7 @@ set videoactive 0
             # puts "error: $result"
         } 
 
+        after cancel { timer2 }
         Ng_Exit; 
         destroy . 
     }
@@ -787,7 +797,7 @@ menu .ngmenu.help
 # .ngmenu.help add command -label "Ng Help..." \
 \#	-command { help_main }
 # .ngmenu.view add checkbutton -variable showsensitivehelp \
-#	-label "Sensitve Help" \
+#	-label "Sensitive Help" \
 #	-command { sensitivehelpdialog $showsensitivehelp }
 .ngmenu.view add checkbutton -label "Help Line" -variable showhelpline \
 	-command {
@@ -820,7 +830,7 @@ ttk::frame .bubar
 #-relief raised -bd 2
 pack .bubar -side top -fill x
 
-button .bubar.testb -text "Test" -command { Ng_SaveGeometry }
+ttk::button .bubar.testb -text "Test" -command { Ng_SaveGeometry }
 ttk::button .bubar.surfm -text "Generate Mesh" -command \
     { 
 	.ngmenu.mesh invoke "Generate Mesh"; 
@@ -947,7 +957,7 @@ proc selvis_monitor { name args } {
 #                                                   #
 #####################################################
 
-label .helpline -text "None"
+ttk::label .helpline -text "None"
 pack forget .helpline -side bottom -fill x
 
 ttk::frame .statbar -relief flat
@@ -1008,7 +1018,7 @@ proc timer2 { } {
         global videoactive
         if { $videoactive == 1 } {
             puts "addframe"
-            .ndraw Ng_VideoClip addframe
+            Ng_VideoClip .ndraw addframe
         }
     }
     if { $multithread_redraw == 2 } {
@@ -1019,7 +1029,7 @@ proc timer2 { } {
         global videoactive
         if { $videoactive == 1 } {
             puts "addframe"
-            .ndraw Ng_VideoClip addframe
+            Ng_VideoClip .ndraw addframe
         }
         after 1 { timer2 }
         return

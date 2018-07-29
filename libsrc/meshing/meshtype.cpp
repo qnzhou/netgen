@@ -157,10 +157,9 @@ namespace netgen
       << " si = " << seg.si << ", edgenr = " << seg.edgenr;
     return s;
   }
-
-
+  /*
   Element2d :: Element2d ()
-  { 
+  {
     for (int i = 0; i < ELEMENT2D_MAXPOINTS; i++)
       {
 	pnum[i] = 0;
@@ -177,8 +176,7 @@ namespace netgen
     strongrefflag = false;
     is_curved = false;
   } 
-
-
+  */
   Element2d :: Element2d (int anp)
   { 
     for (int i = 0; i < ELEMENT2D_MAXPOINTS; i++)
@@ -538,6 +536,9 @@ namespace netgen
           shape(3) = (1-p(0))*   p(1) ;
           break;
         }
+
+      default:
+        throw NgException ("illegal element type in GetShapeNew");
       }
   }
 
@@ -562,6 +563,8 @@ namespace netgen
           shape(3) = (1-p(0))*   p(1) ;
           break;
         }
+      default:
+        throw NgException ("illegal element type in GetShapeNew");
       }
   }
 
@@ -641,6 +644,8 @@ namespace netgen
           dshape(3,1) = (1-p(0));
           break;
         }
+      default:
+        throw NgException ("illegal element type in GetDShapeNew");
       }
   }
 
@@ -962,7 +967,7 @@ namespace netgen
     return s;
   }
 
-
+  /*
   Element :: Element ()
   {
     typ = TET;
@@ -985,9 +990,8 @@ namespace netgen
 #ifdef PARALLEL
     partitionNumber = -1;
 #endif
-
   }
-
+  */
 
   Element :: Element (int anp)
   {
@@ -1056,12 +1060,15 @@ namespace netgen
     flags.fixed = 0;
     orderx = ordery = orderz = 1;
     is_curved =  typ != TET; // false;
+#ifdef PARALLEL
+    partitionNumber = -1;
+#endif
   }
 
 
 
 
-
+  /*
   Element & Element :: operator= (const Element & el2)
   {
     typ = el2.typ;
@@ -1078,7 +1085,7 @@ namespace netgen
     is_curved = el2.is_curved;
     return *this;
   }
-
+  */
 
 
   void Element :: SetNP (int anp)
@@ -1739,12 +1746,14 @@ namespace netgen
         { 0, 0, 1, 1 },
         { 0, 0, 0, 1 },
       };
-  
+    
     double * pp = NULL;
     switch (typ)
       {
       case TET: pp = &eltetqp[0][0]; break;
       case TET10: pp = &eltet10qp[ip-1][0]; break;
+      default:
+        throw NgException ("illegal element shape in GetIntegrationPoint");
       }
 
     p(0) = pp[0];
@@ -1870,6 +1879,8 @@ namespace netgen
           shape(7) = (1-hp(0))*(  hp(1))*(  hp(2));
           break;
         }
+      default:
+        throw NgException("Element :: GetShape not implemented for that element");
       }
   }
 
@@ -1957,6 +1968,8 @@ namespace netgen
           shape(7) = (1-p(0))*(  p(1))*(  p(2));
           break;
         }
+      default:
+        throw NgException("Element :: GetNewShape not implemented for that element");
       }
   }
 
@@ -2417,10 +2430,6 @@ namespace netgen
       << ", colour = " << fd.SurfColour();
     return s;
   }
-
-
-
-
 
 
   Identifications :: Identifications (Mesh & amesh)

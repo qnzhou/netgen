@@ -97,11 +97,11 @@ proc sensitivehelpdialog { show } {
 	pack $w.scroll -side right -fill y
 	pack $w.text -expand yes -fill both
 
-	frame $w.bu
+	ttk::frame $w.bu
 	pack $w.bu
 	# -fill x
 	
-	button $w.close -text "Close" \
+	ttk::button $w.close -text "Close" \
 	    -command { 
 		wm withdraw .senshelp_dlg
 		set showsensitivehelp 0
@@ -138,7 +138,7 @@ set_menu_help "Quit" "Quits Netgen"
 set_menu_help "Geometry" "Preparing geometries, visualiztion of geometries."
 set_menu_help "Scan CSG Geometry" "Generates surface triangulation for rendering"
 set_menu_help "CSG Options" "Sets Options for CSG visualization (bounding box, detail size, number of facets)."
-set_menu_help "CSG Properties" "Defines appearence of current CSG geometry (color, visibility, transparency)"
+set_menu_help "CSG Properties" "Defines appearance of current CSG geometry (color, visibility, transparency)"
 set_menu_help "STL Doctor" "Calls STL Doctor for preprocessing STL geometry files."
 set_menu_help "STL Info" "Retrieves information about current STL geometry."
 
@@ -154,7 +154,7 @@ set_menu_help "Check Volume Mesh" "Checks conformity of volume mesh."
 set_menu_help "Edit Boundary Conditions" "Open dialog for setting boundary condition numbers for individual faces."
 set_menu_help "Analyze Geometry" "Perform only first step in mesh generation. Action depends on geometry type, e.g. generates charts for STL mesh, find vertices in CSG geometries."
 set_menu_help "Mesh Edges" "Meshes edges"
-set_menu_help "Mesh Surface" "Generates surface mesh. Includes already surface optimization for some geomtry types."
+set_menu_help "Mesh Surface" "Generates surface mesh. Includes already surface optimization for some geometry types."
 set_menu_help "Optimize Surface" "Optimizes surface mesh."
 set_menu_help "Surface Optim. Step" "Performs a specific surface optimiztion step. Mesh smoothing moves nodes. edge swapping swaps the diagonal of a quadrilateral built by two triangles, criterion either by number of nodes, or anlges. Combine points eliminates triangles by combining points (in the center of gravity)."
 set_menu_help "Mesh Volume" "Performs volume meshing. Algorithm is a combination of Delaunay and Rule-based Advancing Front"
@@ -168,7 +168,7 @@ set_menu_help "Center" "Defines center of rotation"
 set_menu_help "Viewing Options" "Sets viewing options for geometry, mesh, lighting"
 set_menu_help "Clipping Plane" "Introduces clipping plane. The clipping plane is defined by the normal vector, and a scaled offset. Clipping of performed by OpenGl rendering"
 set_menu_help "Quality Plot" "Shows the element quality distribution histogram. Measure is volume scaled by edge-length to the third. Optimal elements have measure 1."
-set_menu_help "Sensitve Help" "Shows this help window"
+set_menu_help "Sensitive Help" "Shows this help window"
 
 set_menu_help "Mesh-size" "Manipulations of existing mesh"
 set_menu_help "Refine uniform" "Refines mesh by splitting elements into eight childs (algorithm of J. Bey)"
@@ -183,7 +183,7 @@ set_menu_help "MS from Surf Mesh" "Defines mesh-size by the surface mesh."
 set f .options_dlg.nb.nbframe.general
 # set_control_help $f "General meshing page"
 set_control_help $f.fine "Controls relative mesh size.\nThis control affects other mesh-size controls in common"
-set_control_help $f.first "First step in mesh generation. Usually, meshing  starts from \"analyze geometry\". If the surface mesh is already available \"First step\" should be set to \"mesh volume\""
+set_control_help $f.first "First step in mesh generation. Usually, meshing starts from \"analyze geometry\". If the surface mesh is already available \"First step\" should be set to \"mesh volume\""
 set_control_help $f.last "Last step in mesh generation. If only the surface mesh is required, please set \"Last Step\" to \"Optimize Surface\""
 
 set_control_help .bubar.surfm "Start mesh generation"

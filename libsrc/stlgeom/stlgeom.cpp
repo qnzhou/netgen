@@ -18,6 +18,7 @@ void STLMeshing (STLGeometry & geom,
   geom.Clear();
   geom.BuildEdges();
   geom.MakeAtlas(mesh);
+  if (multithread.terminate) { return; }
   geom.CalcFaceNums();
   geom.AddFaceEdges();
   geom.LinkEdges();
@@ -48,8 +49,8 @@ void STLMeshing (STLGeometry & geom,
   meshchart = 0; // initialize all ?? JS
 
   if (geomsearchtreeon)
-    searchtree = new Box3dTree (GetBoundingBox().PMin() - Vec3d(1,1,1),
-				GetBoundingBox().PMax() + Vec3d(1,1,1));
+    searchtree = new BoxTree<3> (GetBoundingBox().PMin() - Vec3d(1,1,1),
+                                 GetBoundingBox().PMax() + Vec3d(1,1,1));
   else
     searchtree = NULL;
 
@@ -91,10 +92,9 @@ void STLGeometry :: Save (string filename) const
 
 
 
-int STLGeometry :: GenerateMesh (shared_ptr<Mesh> & mesh, MeshingParameters & mparam,
-				 int perfstepsstart, int perfstepsend)
+int STLGeometry :: GenerateMesh (shared_ptr<Mesh> & mesh, MeshingParameters & mparam)
 {
-  return STLMeshingDummy (this, mesh, mparam, perfstepsstart, perfstepsend);
+  return STLMeshingDummy (this, mesh, mparam);
 }
 
 
@@ -182,7 +182,7 @@ void STLGeometry :: SmoothNormals()
 
   Vec<3> ri;
 
-  double wnb = stldoctor.smoothnormalsweight;   // neigbour normal weight
+  double wnb = stldoctor.smoothnormalsweight;   // neighbour normal weight
   double wgeom = 1-wnb;   // geometry normal weight
 
 
@@ -456,7 +456,8 @@ int STLGeometry :: AddEdge(int ap1, int ap2)
   STLEdge e(ap1,ap2);
   e.SetLeftTrig(GetLeftTrig(ap1,ap2));
   e.SetRightTrig(GetRightTrig(ap1,ap2));
-  return edges.Append(e);
+  edges.Append(e);
+  return edges.Size();
 }
 
 void STLGeometry :: STLDoctorConfirmEdge()
@@ -2115,7 +2116,7 @@ int STLGeometry :: CheckGeometryOverlapping()
   Point<3> pmin = geombox.PMin();
   Point<3> pmax = geombox.PMax();
 
-  Box3dTree setree(pmin, pmax);
+  BoxTree<3> setree(pmin, pmax);
 
   int oltrigs = 0;
   markedtrigs.SetSize(GetNT());

@@ -198,7 +198,7 @@ namespace netgen
       TopTools_IndexedMapOfShape fmap, emap, vmap, somap, shmap, wmap;
       Array<bool> fsingular, esingular, vsingular;
       Box<3> boundingbox;
-
+      Array<string> fnames, enames, snames;
       // Philippose - 29/01/2009
       // OpenCascade XDE Support
       // XCAF Handle to make the face colours available to the rest of
@@ -244,7 +244,7 @@ namespace netgen
       }
 
 
-     virtual void Save (string filename) const;
+      DLL_HEADER virtual void Save (string filename) const;
 
 
       DLL_HEADER void BuildFMap();
@@ -275,7 +275,7 @@ namespace netgen
          return OCCSurface (TopoDS::Face(fmap(surfi)), PLANESPACE);
       }
 
-      void CalcBoundingBox ();
+      DLL_HEADER void CalcBoundingBox ();
       DLL_HEADER void BuildVisualizationMesh (double deflection);
 
       void RecursiveTopologyTree (const TopoDS_Shape & sh,
@@ -387,15 +387,14 @@ namespace netgen
 
 //      void WriteOCC_STL(char * filename);
 
-     DLL_HEADER virtual int GenerateMesh (shared_ptr<Mesh> & mesh, MeshingParameters & mparam, 
-         int perfstepsstart, int perfstepsend);
+     DLL_HEADER virtual int GenerateMesh (shared_ptr<Mesh> & mesh, MeshingParameters & mparam);
 
       DLL_HEADER virtual const Refinement & GetRefinement () const;
    };
 
 
 
-   class OCCParameters
+   class DLL_HEADER OCCParameters
    {
    public:
 
@@ -441,15 +440,14 @@ namespace netgen
    // Philippose - 31.09.2009
    // External access to the mesh generation functions within the OCC
    // subsystem (Not sure if this is the best way to implement this....!!)
-   extern int OCCGenerateMesh (OCCGeometry & occgeometry, shared_ptr<Mesh> & mesh,
-			       MeshingParameters & mparam,
-			       int perfstepsstart, int perfstepsend);
+   DLL_HEADER extern int OCCGenerateMesh (OCCGeometry & occgeometry, shared_ptr<Mesh> & mesh,
+			       MeshingParameters & mparam);
 
-  extern void OCCSetLocalMeshSize(OCCGeometry & geom, Mesh & mesh);
+   DLL_HEADER extern void OCCSetLocalMeshSize(OCCGeometry & geom, Mesh & mesh);
 
-   extern void OCCMeshSurface (OCCGeometry & geom, Mesh & mesh, int perfstepsend);
+   DLL_HEADER extern void OCCMeshSurface (OCCGeometry & geom, Mesh & mesh, int perfstepsend);
 
-   extern void OCCFindEdges (OCCGeometry & geom, Mesh & mesh);
+   DLL_HEADER extern void OCCFindEdges (OCCGeometry & geom, Mesh & mesh);
 }
 
 #endif

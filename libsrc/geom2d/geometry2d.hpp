@@ -35,10 +35,10 @@ namespace netgen
     int bc;
     /// copy spline mesh from other spline (-1.. do not copy)
     int copyfrom;
-    /// perfrom anisotropic refinement (hp-refinement) to edge
-    bool hpref_left;
-    /// perfrom anisotropic refinement (hp-refinement) to edge
-    bool hpref_right;
+    /// perform anisotropic refinement (hp-refinement) to edge
+    double hpref_left;
+    /// perform anisotropic refinement (hp-refinement) to edge
+    double hpref_right;
     ///
     int layer;
 
@@ -129,7 +129,7 @@ namespace netgen
     Array<bool> tensormeshing;
     Array<int> layer;
     Array<string*> bcnames;
-    double elto0;
+    double elto0 = 1.0;
 
 
   public:
@@ -156,8 +156,7 @@ namespace netgen
     }
 
     
-    DLL_HEADER virtual int GenerateMesh (shared_ptr<Mesh> & mesh, MeshingParameters & mparam,
-                                         int perfstepsstart, int perfstepsend);
+    DLL_HEADER virtual int GenerateMesh (shared_ptr<Mesh> & mesh, MeshingParameters & mparam);
     
     void PartitionBoundary (MeshingParameters & mp, double h, Mesh & mesh2d);
 

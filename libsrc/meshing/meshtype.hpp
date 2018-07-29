@@ -25,9 +25,25 @@ namespace netgen
     HEX = 25
   };
 
+  /*
   typedef int ELEMENT_EDGE[2];      // initial point, end point
   typedef int ELEMENT_FACE[4];      // points, last one is -1 for trig
+  */
 
+  struct ELEMENT_EDGE
+  {
+    int vals[2];
+    int & operator[] (size_t i) { return vals[i]; }
+    int operator[] (size_t i) const { return vals[i]; }
+  };
+  
+  struct ELEMENT_FACE
+  {
+    int vals[4];
+    int & operator[] (size_t i) { return vals[i]; }
+    int operator[] (size_t i) const { return vals[i]; }
+  };
+  
 
 #define ELEMENT_MAXPOINTS 12
 #define ELEMENT2D_MAXPOINTS 8
@@ -38,18 +54,35 @@ namespace netgen
   enum OPTIMIZEGOAL { OPT_QUALITY, OPT_CONFORM, OPT_REST, OPT_WORSTCASE, OPT_LEGAL };
 
 
+  extern DLL_HEADER size_t timestamp;
+  inline size_t GetTimeStamp() 
+  { 
+    return timestamp; 
+  }
 
+  inline size_t NextTimeStamp()
+  {
+    timestamp++;
+    return timestamp;
+  }
+  
+  /*
   extern DLL_HEADER int GetTimeStamp();
   extern DLL_HEADER int NextTimeStamp();
-
+  */
   class PointGeomInfo
   {
   public:
     int trignum;   // for STL Meshing
     double u, v;   // for OCC Meshing
 
-    PointGeomInfo () 
-      : trignum(-1), u(0), v(0) { ; }
+    PointGeomInfo () = default;
+    // : trignum(-1), u(0), v(0) { ; }
+    PointGeomInfo (const PointGeomInfo&) = default;
+    PointGeomInfo (PointGeomInfo &&) = default;
+    PointGeomInfo & operator= (const PointGeomInfo&) = default;
+    PointGeomInfo & operator= (PointGeomInfo&&) = default;
+    
   };
 
   inline ostream & operator<< (ostream & ost, const PointGeomInfo & gi)
@@ -117,14 +150,21 @@ namespace netgen
   {
     int i;
   public:
-    PointIndex () { ; }
+    PointIndex () = default;
+    PointIndex (const PointIndex&) = default;
+    PointIndex (PointIndex &&) = default;
+    PointIndex & operator= (const PointIndex&) = default;
+    PointIndex & operator= (PointIndex&&) = default;
+     
     PointIndex (int ai) : i(ai) { ; }
-    PointIndex & operator= (const PointIndex &ai) { i = ai.i; return *this; }
+    // PointIndex & operator= (const PointIndex &ai) { i = ai.i; return *this; }
     operator int () const { return i; }
     PointIndex operator++ (int) { PointIndex hi(*this); i++; return hi; }
     PointIndex operator-- (int) { PointIndex hi(*this); i--; return hi; }
     PointIndex operator++ () { i++; return *this; }
     PointIndex operator-- () { i--; return *this; }
+    void Invalidate() { i = PointIndex::BASE-1; }
+    bool IsValid() const { return i != PointIndex::BASE-1; }
 #ifdef BASE0
     enum { BASE = 0 };
 #else
@@ -134,7 +174,7 @@ namespace netgen
 
   inline istream & operator>> (istream & ist, PointIndex & pi)
   {
-    int i; ist >> i; pi = i; return ist;
+    int i; ist >> i; pi = PointIndex(i); return ist;
   }
 
   inline ostream & operator<< (ostream & ost, const PointIndex & pi)
@@ -142,7 +182,18 @@ namespace netgen
     return (ost << int(pi));
   }
 
-
+  template <int N> class PointIndices;
+  template <> class PointIndices<2> : public INDEX_2
+  {
+  public:
+    PointIndices () = default;
+    PointIndices (INDEX_2 i2) : INDEX_2(i2) { ; }
+    PointIndices (PointIndex i1, PointIndex i2) : INDEX_2(i1,i2) { ; } 
+    PointIndex operator[] (int i) const { return PointIndex(INDEX_2::operator[](i)); }
+    PointIndex & operator[] (int i) { return reinterpret_cast<PointIndex&>(INDEX_2::operator[](i)); }
+    static PointIndices Sort(PointIndex i1, PointIndex i2) { return INDEX_2::Sort(i1, i2); } 
+  };
+  
 
 
   class ElementIndex
@@ -154,8 +205,10 @@ namespace netgen
     ElementIndex & operator= (const ElementIndex & ai) { i = ai.i; return *this; }
     ElementIndex & operator= (int ai) { i = ai; return *this; }
     operator int () const { return i; }
-    ElementIndex & operator++ (int) { i++; return *this; }
-    ElementIndex & operator-- (int) { i--; return *this; }
+    ElementIndex operator++ (int) { return ElementIndex(i++); }    
+    ElementIndex operator-- (int) { return ElementIndex(i--); }
+    ElementIndex & operator++ () { ++i; return *this; }
+    ElementIndex & operator-- () { --i; return *this; }
   };
 
   inline istream & operator>> (istream & ist, ElementIndex & pi)
@@ -173,15 +226,20 @@ namespace netgen
   {
     int i;
   public:
-    SurfaceElementIndex () { ; }
+    SurfaceElementIndex () = default;
     SurfaceElementIndex (int ai) : i(ai) { ; }
+    /*
     SurfaceElementIndex & operator= (const SurfaceElementIndex & ai) 
     { i = ai.i; return *this; }
+    */
+    SurfaceElementIndex & operator= (const SurfaceElementIndex & ai) = default;
     SurfaceElementIndex & operator= (int ai) { i = ai; return *this; }
     operator int () const { return i; }
-    SurfaceElementIndex & operator++ (int) { i++; return *this; }
+    SurfaceElementIndex operator++ (int) { SurfaceElementIndex hi(*this); i++; return hi; }
+    SurfaceElementIndex operator-- (int) { SurfaceElementIndex hi(*this); i--; return hi; }
+    SurfaceElementIndex & operator++ () { ++i; return *this; }
+    SurfaceElementIndex & operator-- () { --i; return *this; }
     SurfaceElementIndex & operator+= (int inc) { i+=inc; return *this; }
-    SurfaceElementIndex & operator-- (int) { i--; return *this; }
   };
 
   inline istream & operator>> (istream & ist, SurfaceElementIndex & pi)
@@ -251,6 +309,8 @@ namespace netgen
       singular = 0; 
     }
 
+    void Scale(double factor) { *testout << "before: " << x[0] << endl; x[0] *= factor; x[1] *= factor; x[2] *= factor; *testout << "after: " << x[0] << endl;}
+
     int GetLayer() const { return layer; }
 
     POINTTYPE Type() const { return type; }
@@ -317,15 +377,19 @@ namespace netgen
 
   public:
     ///
-    Element2d ();
+    Element2d () = default;
+    Element2d (const Element2d &) = default;
+    Element2d (Element2d &&) = default;
+    Element2d & operator= (const Element2d &) = default;
+    Element2d & operator= (Element2d &&) = default;
     ///
-    Element2d (int anp);
+    DLL_HEADER Element2d (int anp);
     ///
     DLL_HEADER Element2d (ELEMENT_TYPE type);
     ///
-    Element2d (int pi1, int pi2, int pi3);
+    DLL_HEADER Element2d (int pi1, int pi2, int pi3);
     ///
-    Element2d (int pi1, int pi2, int pi3, int pi4);
+    DLL_HEADER Element2d (int pi1, int pi2, int pi3, int pi4);
     ///
     ELEMENT_TYPE GetType () const { return typ; }
     /// 
@@ -342,6 +406,7 @@ namespace netgen
 	default:
 	  PrintSysError ("Element2d::SetType, illegal type ", int(typ));
 	}
+      is_curved = (np >= 4); 
     }
     ///
     int GetNP() const { return np; }
@@ -384,6 +449,10 @@ namespace netgen
 
     FlatArray<const PointIndex> PNums () const 
     { return FlatArray<const PointIndex> (np, &pnum[0]); }
+    FlatArray<PointIndex> PNums ()
+    { return FlatArray<PointIndex> (np, &pnum[0]); }
+    auto Vertices() const
+    { return FlatArray<const PointIndex> (GetNV(), &pnum[0]); }
     
     ///
     PointIndex & PNum (int i) { return pnum[i-1]; }
@@ -468,8 +537,13 @@ namespace netgen
 					int pi, Vec2d & dir, double & dd) const;
 
 
-
-    void Delete () { deleted = 1; pnum[0] = pnum[1] = pnum[2] = pnum[3] = PointIndex::BASE-1; }
+    
+    void Delete ()
+    {
+      deleted = 1;
+      for (PointIndex & p : pnum) p.Invalidate(); 
+    }
+    
     bool IsDeleted () const 
     {
 #ifdef DEBUG
@@ -557,7 +631,7 @@ namespace netgen
       bool marked:1;  // marked for refinement
       bool badel:1;   // angles worse then limit
       bool reverse:1; // for refinement a la Bey
-      bool illegal:1; // illegal, will be split or swaped 
+      bool illegal:1; // illegal, will be split or swapped 
       bool illegal_valid:1; // is illegal-flag valid ?
       bool badness_valid:1; // is badness valid ?
       bool refflag:1;     // mark element for refinement
@@ -589,13 +663,18 @@ namespace netgen
     flagstruct flags;
 
     ///
-    DLL_HEADER Element ();
+    DLL_HEADER Element () = default;
+    Element (const Element &) = default;
+    Element (Element &&) = default;
+    Element & operator= (const Element &) = default;
+    Element & operator= (Element &&) = default;
+
     ///
     Element (int anp);
     ///
     Element (ELEMENT_TYPE type);
     ///
-    Element & operator= (const Element & el2);
+    // Element & operator= (const Element & el2);
   
     ///
     void SetNP (int anp);
@@ -604,7 +683,7 @@ namespace netgen
     ///
     int GetNP () const { return np; }
     ///
-    short int GetNV() const
+    uint8_t GetNV() const
     {
       __assume(typ >= TET && typ <= HEX);        
       switch (typ)
@@ -623,7 +702,8 @@ namespace netgen
 #ifdef DEBUG
           PrintSysError ("Element3d::GetNV not implemented for typ ", typ);
 #endif
-            return -1;
+          __assume(false);
+          return -1;
         }
     }
 
@@ -668,10 +748,10 @@ namespace netgen
 
     ///
     void GetBox (const T_POINTS & points, Box3d & box) const;
-    /// Calculates Volume of elemenet
+    /// Calculates Volume of element
     double Volume (const T_POINTS & points) const;
     ///
-    void Print (ostream & ost) const;
+    DLL_HEADER void Print (ostream & ost) const;
     ///
     int GetNFaces () const
     {
@@ -826,7 +906,9 @@ namespace netgen
     unsigned int seginfo:2;
 
     /// surface decoding index
-    int si;          
+    int si;
+    /// co dim 2 deconding index
+    int cd2i;
     /// domain number inner side
     int domin;
     /// domain number outer side
@@ -919,6 +1001,9 @@ namespace netgen
   public:
     PointIndex pnum;
     int index;
+    Element0d () = default;
+    Element0d (PointIndex _pnum, int _index)
+      : pnum(_pnum), index(_index) { ; } 
   };
 
   ostream & operator<<(ostream  & s, const Element0d & el);
@@ -1077,7 +1162,7 @@ namespace netgen
     int checkoverlappingboundary = 1;
     /// check chart boundary (sometimes too restrictive)
     int checkchartboundary = 1;
-    /// safty factor for curvatures (elemetns per radius)
+    /// safety factor for curvatures (elements per radius)
     double curvaturesafety = 2;
     /// minimal number of segments per edge
     double segmentsperedge = 1;
@@ -1086,6 +1171,11 @@ namespace netgen
     /// weight of element size w.r.t element shape
     double elsizeweight = 0.2;
     /// init with default values
+
+    /// start at step
+    int perfstepsstart = 0;
+    /// end at step
+    int perfstepsend = 6;
 
 
     /// from mp3:
@@ -1106,6 +1196,8 @@ namespace netgen
     double badellimit = 175;
 
     bool check_impossible = 0;
+
+    int only3D_domain_nr = 0;
   
     ///
     int secondorder = 0;
@@ -1113,6 +1205,8 @@ namespace netgen
     int elementorder = 1;
     /// quad-dominated surface meshing
     int quad = 0;
+    ///
+    bool try_hexes = false;
     ///
     int inverttets = 0;
     ///
@@ -1352,7 +1446,7 @@ namespace netgen
     /// remove secondorder
     void SetMaxPointNr (int maxpnum);
 
-    void Print (ostream & ost) const;
+    DLL_HEADER void Print (ostream & ost) const;
   };
 
 

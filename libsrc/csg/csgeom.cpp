@@ -129,17 +129,14 @@ namespace netgen
 
 
   extern int CSGGenerateMesh (CSGeometry & geom, 
-			      shared_ptr<Mesh> & mesh, MeshingParameters & mparam,
-			      int perfstepsstart, int perfstepsend);
+			      shared_ptr<Mesh> & mesh, MeshingParameters & mparam);
 
 
-  int CSGeometry :: GenerateMesh (shared_ptr<Mesh> & mesh, MeshingParameters & mparam,
-				 int perfstepsstart, int perfstepsend)
+  int CSGeometry :: GenerateMesh (shared_ptr<Mesh> & mesh, MeshingParameters & mparam)
   {
-    return CSGGenerateMesh (*this, mesh, mparam, perfstepsstart, perfstepsend);
+    return CSGGenerateMesh (*this, mesh, mparam);
   }
-
-
+  
   const Refinement & CSGeometry :: GetRefinement () const
   {
     // cout << "get CSGeometry - Refinement" << endl;
@@ -348,7 +345,25 @@ namespace netgen
 	const ExtrusionFace * ef = dynamic_cast< const ExtrusionFace * > (GetSurface(i));
 	const RevolutionFace * rf = dynamic_cast< const RevolutionFace * > (GetSurface(i));
 	const DummySurface * dummyf = dynamic_cast< const DummySurface * > (GetSurface(i));
+        const SplineSurface * splines = dynamic_cast<const SplineSurface *> (GetSurface(i));
 
+        if (splines)
+          {
+            splines->GetBase()->GetPrimitiveData(classname,coeffs);
+            out << classname << " " << coeffs.Size() << "\n";
+            for (int j=0; j<coeffs.Size(); j++)
+              out << coeffs[j] << " ";
+            out << "\n";
+            for (auto cut : *(splines->GetCuts()))
+              {
+                cut->GetPrimitiveData(classname,coeffs);
+                out << classname << " " << coeffs.Size() << "\n";
+                for (int j=0; j<coeffs.Size(); j++)
+                  out << coeffs[j] << " ";
+                out << "\n";
+              }
+            return;
+          }
 
 	if(sp)
 	  {
@@ -651,7 +666,8 @@ namespace netgen
 
   int CSGeometry :: SetTopLevelObject (Solid * sol, Surface * surf)
   {
-    return toplevelobjects.Append (new TopLevelObject (sol, surf)) - 1;
+    toplevelobjects.Append (new TopLevelObject (sol, surf));
+    return toplevelobjects.Size()-1;
   }
 
   TopLevelObject * CSGeometry :: 
@@ -820,6 +836,7 @@ namespace netgen
   {
     int inv;
     int nsurf = GetNSurf();
+
 
     isidenticto.SetSize(nsurf);
     for (int i = 0; i < nsurf; i++)

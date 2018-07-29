@@ -1,11 +1,6 @@
 #ifndef FILE_MYSTDLIB
 #define FILE_MYSTDLIB
 
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
-
-
 #include <iostream>
 #include <iomanip>
 #include <fstream>
@@ -23,7 +18,7 @@
 #include <memory>
 #include <thread>
 #include <mutex>
-
+#include <atomic>
 
 #include <new>
 #include <string>

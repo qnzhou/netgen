@@ -56,7 +56,7 @@ Forschung'' (http://www.fwf.ac.at) under projects P 10643-TEC and SFB
 1306.  Starting from 2002, the development continued within the Start
 project ``hp-FEM'' (http://www.hpfem.jku.at) granted by the FWF.  In
 2006, the Netgen development moved together with J.~Sch\"oberl to RWTH
-Aachen Universtiy, Germany (http://www.mathcces.rwth-aachen.de/netgen).
+Aachen University, Germany (http://www.mathcces.rwth-aachen.de/netgen).
 
 
 \section{How to receive NETGEN}
@@ -161,7 +161,7 @@ ASCII file in a text editor.
 
 The geometry is defined by the Eulerian operations (union,
 intersection and complement) from primitives. A complete list of
-availabe primitives is given in Section~\ref{sec_primitives}.
+available primitives is given in Section~\ref{sec_primitives}.
 
 The following input describes a cube:
 \begin{quote}
@@ -234,7 +234,7 @@ solid cubeball = orthobrick (0, 0, 0; 1, 1, 1)
         or sphere (0, 0, 0; 0.5) -maxh=0.2;
 \end{verbatim}
 \end{quote}
-The flag {\tt -maxh=0.2} assignes the maximal mesh size of $0.2$ to
+The flag {\tt -maxh=0.2} assigns the maximal mesh size of $0.2$ to
 the solid. The current version, NG4.1, uses the mesh size assigned to
 the main solid of the top-level-object for the domain. Future version
 will contain more possibilities to define mesh-sizes for parts of a
@@ -261,7 +261,7 @@ amount of red, green and blue (RGB) values. The flag {\tt
 
 
 It is possible to specify bounday condition numbers for individual
-surfaces of a solid. The flag {\tt -bc} assignes the bc to all 
+surfaces of a solid. The flag {\tt -bc} assigns the bc to all 
 surfaces of that solid-tree. If several flags are given the one closest
 to the leaves of the tree dominates. The following file defines a 
 cube, with $bc=1$ at the bottom, $bc=2$ at the top, and $bc=3$ for 
@@ -438,12 +438,12 @@ have to be orthogonal to the x-axis.
 
 \section{Surface Identification}
 In Netgen it is possible to construct prismatic meshes between two surfaces, where these surfaces
-have to be specified explicitely in the .geo file with the command
+have to be specified explicitly in the .geo file with the command
 \begin{quote}
   \tt
   identify closesurfaces <surface1> <surface2>;
 \end{quote}
-(this feature originally was intented for close surface, which is the reason for the command name).
+(this feature originally was intended for close surface, which is the reason for the command name).
 \paragraph{Optional parameters:} (selection)
 \begin{itemize}
 \item \texttt{-tlo=<name of top level object>}\\
@@ -657,7 +657,7 @@ After the number of nodes there follows a list of $x$ and $y$
 -coordinates of the mesh-nodes.
 \item
 geometric information \\
-After the number of spline patches there follows a list of spline specifications. Each spline patch is given by the 6 coefficients of the descibing 
+After the number of spline patches there follows a list of spline specifications. Each spline patch is given by the 6 coefficients of the describing 
 quadratic polynomial equation
 $$
 c_1 x^2 + c_2 y^2 + c_3 xy + c_4 x + c_5 y + c_6 = 0
@@ -723,7 +723,7 @@ can run netgen in batch-mode using command line arguments.
 Command line arguments are specified as {\it -flag=value}.
 \begin{itemize}
 \item -help \newline
-Prints the availabel command line arguments
+Prints the available command line arguments
 \item -geofile=filename \newline
 Specifies geometry file. Is equivalent to {\it filename}, i.e., you can
 scip {\it -geofile=}.

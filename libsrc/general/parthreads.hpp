@@ -10,6 +10,7 @@
 /*
   Parallel thread, Mutex,
 */
+#include <functional>
 
 namespace netgen
 {
@@ -94,14 +95,23 @@ void ParallelFor( int first, int next, const TFunc & f )
 }
 
 
+  
+  template<typename T>
+  inline atomic<T> & AsAtomic (T & d)
+  {
+    return reinterpret_cast<atomic<T>&> (d);
+  }
 
-  typedef void (*TaskManager)(function<void(int,int)>);
+  typedef void (*TaskManager)(std::function<void(int,int)>);
+  typedef void (*Tracer)(string, bool);  // false .. start, true .. stop
 
-  inline void DummyTaskManager (function<void(int,int)> func)
+  inline void DummyTaskManager (std::function<void(int,int)> func)
   {
     func(0,2);
     func(1,2);
   }
+
+  inline void DummyTracer (string, bool) { ; }
   
   template <typename FUNC>
   inline void ParallelFor (TaskManager tm, size_t n, FUNC func)

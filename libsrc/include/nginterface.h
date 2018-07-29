@@ -23,7 +23,11 @@
       #define DLL_HEADER   __declspec(dllimport)
    #endif
 #else
-   #define DLL_HEADER 
+   #if __GNUC__ >= 4
+      #define DLL_HEADER __attribute__ ((visibility ("default")))
+   #else
+      #define DLL_HEADER
+   #endif
 #endif
 
 
@@ -54,7 +58,7 @@ typedef int NG_FACE[4];      // points, last one is 0 for trig
 extern "C" {
 #endif
   
-  // load geomtry from file 
+  // load geometry from file 
   DLL_HEADER void Ng_LoadGeometry (const char * filename);
   
   // load netgen mesh
@@ -125,6 +129,9 @@ extern "C" {
   DLL_HEADER char * Ng_GetBCNumBCName (int bcnr);
   //void Ng_GetBCNumBCName (int bcnr, char * name);
 
+  // Get BCName for bc-number of co dim 2
+  DLL_HEADER char * Ng_GetCD2NumCD2Name (int cd2nr);
+
   // Get normal vector of surface element node
   // DLL_HEADER void Ng_GetNormalVector (int sei, int locpi, double * nv);     
   
@@ -142,12 +149,12 @@ extern "C" {
                                                const int * const indices = NULL, const int numind = 0);
   
 
-  // is elment ei curved ?
+  // is element ei curved ?
   DLL_HEADER int Ng_IsElementCurved (int ei);
-  // is elment sei curved ?
+  // is element sei curved ?
   DLL_HEADER int Ng_IsSurfaceElementCurved (int sei);
 
-  /// Curved Elemens:
+  /// Curved Elements:
   /// xi..local coordinates
   /// x ..global coordinates
   /// dxdxi...D x D Jacobian matrix (row major storage)
@@ -162,7 +169,7 @@ extern "C" {
   
 
 
-  /// Curved Elemens:
+  /// Curved Elements:
   /// xi..local coordinates
   /// x ..global coordinates
   /// dxdxi...D x D-1 Jacobian matrix (row major storage)
@@ -170,7 +177,7 @@ extern "C" {
   DLL_HEADER void Ng_GetSurfaceElementTransformation (int sei, const double * xi, 
                                                       double * x, double * dxdxi);
   
-  /// Curved Elemens:
+  /// Curved Elements:
   /// xi..local coordinates
   /// sxi..step xi
   /// x ..global coordinates
@@ -274,7 +281,7 @@ extern "C" {
 
 #ifdef PARALLEL
 
-  // the folling functions are 0-base  !!
+  // the following functions are 0-base  !!
 
   // number on distant processor 
   // returns pairs  (dist_proc, num_on_dist_proc)
@@ -305,7 +312,7 @@ extern "C" {
   
   struct Ng_SolutionData
   {
-    const char * name; // name of gridfunction
+    string name;      // name of gridfunction
     double * data;    // solution values
     int components;   // relevant (double) components in solution vector
     int dist;         // # doubles per entry alignment! 

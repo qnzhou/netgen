@@ -3,3 +3,9 @@ add_library( la OBJECT
         )
 
 set_target_properties(la PROPERTIES POSITION_INDEPENDENT_CODE ON )
+
+install(FILES
+  densemat.hpp linalg.hpp opti.hpp
+  polynomial.hpp vector.hpp
+  DESTINATION ${NG_INSTALL_DIR_INCLUDE}/linalg COMPONENT netgen_devel
+)

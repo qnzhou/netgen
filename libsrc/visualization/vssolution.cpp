@@ -12,24 +12,32 @@
 namespace netgen
 {
 
-  VisualSceneSolution vssolution;
+
+  DLL_HEADER VisualSceneSolution & GetVSSolution()
+  {
+    static VisualSceneSolution vssolution;
+    return vssolution;
+  }
+
+  
   // extern shared_ptr<Mesh> mesh;
   extern VisualSceneMesh vsmesh;
 
 
   void AddUserVisualizationObject (UserVisualizationObject * vis)
   {
-    vssolution.AddUserVisualizationObject (vis);
+    // vssolution.AddUserVisualizationObject (vis);
+    GetVSSolution().AddUserVisualizationObject (vis);
   }
 
 
   VisualSceneSolution :: SolData :: SolData ()
-    : name (0), data (0), solclass(0)
+    : data (0), solclass(0)
   { ; }
 
   VisualSceneSolution :: SolData :: ~SolData ()
   {
-    delete [] name;
+    // delete [] name;
     delete data;
     delete solclass;
   }
@@ -38,6 +46,7 @@ namespace netgen
   VisualSceneSolution :: VisualSceneSolution ()
     : VisualScene()
   {
+    // cout << "init VisualSceneSolution" << endl;
     surfellist = 0;
     linelist = 0;
     element1dlist = 0;
@@ -68,6 +77,7 @@ namespace netgen
   
   VisualSceneSolution :: ~VisualSceneSolution ()
   {
+    // cout << "exit VisualSceneSolution" << endl;    
     ClearSolutionData();
   }
 
@@ -86,7 +96,8 @@ namespace netgen
     int funcnr = -1;
     for (int i = 0; i < soldata.Size(); i++)
       {
-        if (strcmp (soldata[i]->name, sd->name) == 0)
+        // if (strcmp (soldata[i]->name, sd->name) == 0)
+        if (soldata[i]->name == sd->name)
           {
             delete soldata[i];
             soldata[i] = sd;
@@ -415,7 +426,7 @@ namespace netgen
         else
           {
             glTranslatef (0.5, 0, 0);
-            glRotatef(360 * vssolution.time, 0, 0, -1);
+            glRotatef(360 * netgen::GetVSSolution().time, 0, 0, -1);
             if (fabs (maxval) > 1e-10)
               glScalef(0.5/maxval, 0.5/maxval, 0.5/maxval);
             else
@@ -635,7 +646,7 @@ namespace netgen
       }
     catch (bad_weak_ptr e)
       {
-        cout << "don't have a mesh to visualize" << endl;
+        // cout << "don't have a mesh to visualize" << endl;
         VisualScene::DrawScene();      
       }
   }
@@ -1131,7 +1142,7 @@ namespace netgen
       }
     catch (bad_weak_ptr e)
       {
-        cout << "vssolution::buildscene: don't have a mesh to visualize" << endl;
+        PrintMessage (3, "vssolution::buildscene: don't have a mesh to visualize");
         VisualScene::BuildScene (zoomall);
       }
   }
@@ -1279,7 +1290,6 @@ namespace netgen
 
     Array<double> mvalues(npt);
     int sol_comp = (sol && sol->draw_surface) ? sol->components : 0;
-#ifdef __AVX__
     Array<Point<2,SIMD<double>> > simd_pref ( (npt+SIMD<double>::Size()-1)/SIMD<double>::Size() );
     Array<Point<3,SIMD<double>> > simd_points ( (npt+SIMD<double>::Size()-1)/SIMD<double>::Size() );
     Array<Mat<3,2,SIMD<double>> > simd_dxdxis ( (npt+SIMD<double>::Size()-1)/SIMD<double>::Size() );
@@ -1287,7 +1297,6 @@ namespace netgen
     Array<SIMD<double>> simd_values( (npt+SIMD<double>::Size()-1)/SIMD<double>::Size() * sol_comp);
 
     
-#endif
     
     // Array<Point<3,float>> glob_pnts;
     // Array<Vec<3,float>> glob_nvs;
@@ -1486,7 +1495,6 @@ namespace netgen
     NgProfiler::StartTimer(timerloops);
     size_t base_pi = 0;
 
-#ifdef __AVX__
     for (int iy = 0, ii = 0; iy <= n; iy++)
       for (int ix = 0; ix <= n-iy; ix++, ii++)
         pref[ii] = Point<2> (ix*invn, iy*invn);
@@ -1496,10 +1504,9 @@ namespace netgen
     
     for (size_t i = 0; i < simd_npt; i++)
       {
-        simd_pref[i](0).SIMD_function ([&] (size_t j) { size_t ii = i*simd_size+j; return (ii < npt) ? pref[ii](0) : 0; }, std::true_type());
-        simd_pref[i](1).SIMD_function ([&] (size_t j) { size_t ii = i*simd_size+j; return (ii < npt) ? pref[ii](1) : 0; }, std::true_type());
+        simd_pref[i](0) = [&] (size_t j) { size_t ii = i*simd_size+j; return (ii < npt) ? pref[ii](0) : 0; };
+        simd_pref[i](1) = [&] (size_t j) { size_t ii = i*simd_size+j; return (ii < npt) ? pref[ii](1) : 0; };
       }
-#endif
 
     Array<int> ind_reftrig;
     for (int iy = 0, ii = 0; iy < n; iy++,ii++)
@@ -1928,12 +1935,12 @@ namespace netgen
     Array<Point<3> > grid(n3);
     Array<Point<3> > locgrid(n3);
     Array<Mat<3,3> > trans(n3);
-    Array<double> val(n3);
-    Array<Vec<3> > grads(n3);
+    Array<double> val1(n3*sol->components);
+    Array<Vec<3> > grads1(n3);
     Array<int> compress(n3);
     
     MatrixFixWidth<3> pointmat(8);
-    grads = Vec<3> (0.0);
+    grads1 = Vec<3> (0.0);
 
     for (ElementIndex ei = 0; ei < ne; ei++)
       {
@@ -2023,26 +2030,47 @@ namespace netgen
               }
 
             bool has_pos = 0, has_neg = 0;
-                
+            GetMultiValues( sol, ei, -1, n3, 
+                            &locgrid[0](0), &locgrid[1](0)-&locgrid[0](0),
+                            &grid[0](0), &grid[1](0)-&grid[0](0),
+                            &trans[0](0), &trans[1](0)-&trans[0](0),
+                            &val1[0], sol->components);
             for (int i = 0; i < cnt_valid; i++)
               {
-                GetValue (sol, ei, &locgrid[i](0), &grid[i](0), &trans[i](0), comp, val[i]);
-        
-                val[i] -= minval;
+                // GetValue (sol, ei, &locgrid[i](0), &grid[i](0), &trans[i](0), comp, val[i]);
 
-                if (vsol)
-                  GetValues (vsol, ei, &locgrid[i](0), &grid[i](0), &trans[i](0), &grads[i](0));
-                grads[i] *= -1;
+                // val[i] -= minval;
+                val1[sol->components*i+comp-1] -= minval;
 
 
-                if (val[i] > 0)
+                // if (vsol)
+                  // GetValues (vsol, ei, &locgrid[i](0), &grid[i](0), &trans[i](0), &grads[i](0));
+                // grads[i] *= -1;
+
+                if (val1[i*sol->components+comp-1] > 0)
                   has_pos = 1;
                 else
                   has_neg = 1;
+                // if (val[i] > 0)
+                  // has_pos = 1;
+                // else
+                  // has_neg = 1;
               }
 
             if (!has_pos || !has_neg) continue;
-            
+            if (vsol)
+            {
+              GetMultiValues(vsol, ei, -1, n3,
+                           &locgrid[0](0), &locgrid[1](0)-&locgrid[0](0),
+                           &grid[0](0), &grid[1](0)-&grid[0](0),
+                           &trans[0](0), &trans[1](0)-&trans[0](0),
+                           &grads1[0](0), vsol->components);
+              // for (int i = 0; i < cnt_valid; i++)
+                // grads1[i*sol->components+comp-1] *= -1;
+              for (int i = 0; i < cnt_valid; i++)
+                grads1[i] *= -1;
+                
+            }
             for (int ix = 0; ix < n; ix++)
               for (int iy = 0; iy < n; iy++)
                 for (int iz = 0; iz < n; iz++)
@@ -2075,8 +2103,10 @@ namespace netgen
                         
                         if (!is_valid) continue;
                         
+                        // for (int j = 0; j < 4; j++)
+                          // nodevali[j] = val[teti[j]];
                         for (int j = 0; j < 4; j++)
-                          nodevali[j] = val[teti[j]];
+                          nodevali[j] = val1[sol->components*teti[j]+comp-1];
                         
                         cntce = 0;
                         for (int j = 0; j < 6; j++)
@@ -2091,8 +2121,9 @@ namespace netgen
 
                                 edgelam[j] = nodevali[lpi2] / (nodevali[lpi2] - nodevali[lpi1]);
                                 edgep[j] = grid[teti[lpi1]] + (1-edgelam[j]) * (grid[teti[lpi2]]-grid[teti[lpi1]]);
-                                normp[j] = grads[teti[lpi1]] + (1-edgelam[j]) * (grads[teti[lpi2]]-grads[teti[lpi1]]);
-                                
+                                // normp[j] = grads[teti[lpi1]] + (1-edgelam[j]) * (grads[teti[lpi2]]-grads[teti[lpi1]]);
+                                normp[j] = grads1[teti[lpi1]] + (1-edgelam[j]) * (grads1[teti[lpi2]]-grads1[teti[lpi1]]);
+                                // normp[j] = grads1[sol->components*teti[lpi1]+comp-1] + (1-edgelam[j]) * (grads1[sol->components*teti[lpi2]+comp-1]-grads1[sol->components*teti[lpi1]+comp-1]);
                                 cntce++;
                                 cpe3 = cpe2;
                                 cpe2 = cpe1;
@@ -3350,8 +3381,6 @@ namespace netgen
                 double lam1, double lam2, 
                 int comp, double & val) const
   {
-    shared_ptr<Mesh> mesh = GetMesh();
-
     bool ok;
     if (comp == 0)
       {
@@ -3399,6 +3428,7 @@ namespace netgen
 
       case SOL_NODAL:
         {
+          shared_ptr<Mesh> mesh = GetMesh();
           const Element2d & el = (*mesh)[selnr];
 
           double lami[8];
@@ -3457,6 +3487,7 @@ namespace netgen
 
       case SOL_ELEMENT:
         {
+          shared_ptr<Mesh> mesh = GetMesh();          
           int el1, el2;
           mesh->GetTopology().GetSurface2VolumeElement (selnr+1, el1, el2);
           el1--;
@@ -3480,6 +3511,7 @@ namespace netgen
 
       case SOL_SURFACE_NONCONTINUOUS:
         {
+          shared_ptr<Mesh> mesh = GetMesh();          
           const Element2d & el = (*mesh)[selnr];
 
           double lami[8];
@@ -3554,12 +3586,14 @@ namespace netgen
 
       case SOL_MARKED_ELEMENTS:
         {
+          shared_ptr<Mesh> mesh = GetMesh();          
           val = (*mesh)[selnr].TestRefinementFlag();
           return 1;
         }
       
       case SOL_ELEMENT_ORDER:
-        {       
+        {
+          shared_ptr<Mesh> mesh = GetMesh();          
           val = (*mesh)[selnr].GetOrder();
           return 1;
         }
@@ -4216,8 +4250,8 @@ namespace netgen
                                             Point<3> p2 = locgrid[teti[pi2]];
                                             cppt.lami =  p2 + edgelam[ednr] * (p1-p2);
                                            
- 
-                                            pnr = pts.Append (cppt)-1;
+                                            pts.Append (cppt);
+                                            pnr = pts.Size()-1;
                                             edges.Set (pair, pnr);
                                           }
 
@@ -4749,13 +4783,14 @@ void Ng_ClearSolutionData ()
 {
 #ifdef OPENGL
   // if (nodisplay) return;
-  netgen::vssolution.ClearSolutionData();
+  // netgen::vssolution.ClearSolutionData();
+  netgen::GetVSSolution().ClearSolutionData();
 #endif
 }
 
 void Ng_InitSolutionData (Ng_SolutionData * soldata)
 {
-  soldata -> name = NULL;
+  // soldata -> name = NULL;
   soldata -> data = NULL;
   soldata -> components = 1;
   soldata -> dist = 1;
@@ -4774,9 +4809,9 @@ void Ng_SetSolutionData (Ng_SolutionData * soldata)
   //   vssolution.ClearSolutionData ();
   netgen::VisualSceneSolution::SolData * vss = new netgen::VisualSceneSolution::SolData;
 
-  vss->name = new char[strlen (soldata->name)+1];
-  strcpy (vss->name, soldata->name);
-
+  // vss->name = new char[strlen (soldata->name)+1];
+  // strcpy (vss->name, soldata->name);
+  vss->name = soldata->name;
   vss->data = soldata->data;
   vss->components = soldata->components;
   vss->dist = soldata->dist;
@@ -4786,7 +4821,8 @@ void Ng_SetSolutionData (Ng_SolutionData * soldata)
   vss->draw_volume = soldata->draw_volume;
   vss->soltype = netgen::VisualSceneSolution::SolType (soldata->soltype);
   vss->solclass = soldata->solclass;
-  netgen::vssolution.AddSolutionData (vss);
+  // netgen::vssolution.AddSolutionData (vss);
+  netgen::GetVSSolution().AddSolutionData (vss);
 #endif
 }
 
@@ -4800,8 +4836,30 @@ namespace netgen
 void Ng_Redraw (bool blocking)
 {
 #ifdef OPENGL
-  netgen::vssolution.UpdateSolutionTimeStamp();
+  //netgen::vssolution.UpdateSolutionTimeStamp();
+  netgen::GetVSSolution().UpdateSolutionTimeStamp();
   netgen::Render(blocking);
 #endif
 }
 
+#ifdef OPENGL
+#ifdef WIN32
+void (*glBindBuffer) (GLenum a, GLuint b);
+void (*glDeleteBuffers) (GLsizei a, const GLuint *b);
+void (*glGenBuffers) (GLsizei a, GLuint *b);
+void (*glBufferData) (GLenum a, GLsizeiptr b, const GLvoid *c, GLenum d);
+void (*glBufferSubData) (GLenum a, GLintptr b, GLsizeiptr c, const GLvoid *d);
+DLL_HEADER void LoadOpenGLFunctionPointers() {
+#ifdef USE_BUFFERS
+  glBindBuffer = (decltype(glBindBuffer)) wglGetProcAddress("glBindBuffer");
+  glBufferSubData = (decltype(glBufferSubData)) wglGetProcAddress("glBufferSubData");
+  glBufferData = (decltype(glBufferData)) wglGetProcAddress("glBufferData");
+  glDeleteBuffers = (decltype(glDeleteBuffers)) wglGetProcAddress("glDeleteBuffers");
+  glGenBuffers = (decltype(glGenBuffers)) wglGetProcAddress("glGenBuffers");
+  if(!glBindBuffer) throw std::runtime_error("Could not load OpenGL functions!");
+#endif
+}
+#else  // WIN32
+DLL_HEADER void LoadOpenGLFunctionPointers() { }
+#endif // WIN32
+#endif // OPENGL

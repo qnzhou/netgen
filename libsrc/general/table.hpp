@@ -34,11 +34,25 @@ protected:
 
 public:
   ///
+  BASE_TABLE (BASE_TABLE && table2)
+    : data(move(table2.data)), oneblock(table2.oneblock)
+  {
+    table2.oneblock = nullptr;
+  }
+
   BASE_TABLE (int size);
   ///
   BASE_TABLE (const FlatArray<int> & entrysizes, int elemsize);
   ///
   ~BASE_TABLE ();
+
+  BASE_TABLE & operator= (BASE_TABLE && table2)
+  {
+    data = move(table2.data);
+    Swap (oneblock, table2.oneblock);
+    return *this;
+  }
+  
   ///
   void SetSize (int size);
   ///
@@ -70,8 +84,8 @@ public:
   ///
   void AllocateElementsOneBlock (int elemsize);
   
-  int AllocatedElements () const;
-  int UsedElements () const;
+  size_t AllocatedElements () const;
+  size_t UsedElements () const;
 
   void SetElementSizesToMaxSizes ();
 };
@@ -94,7 +108,7 @@ class TABLE : public BASE_TABLE
 public:
   /// Creates table.
   inline TABLE () : BASE_TABLE(0) { ; }
-
+  
   /// Creates table of size size
   inline TABLE (int size) : BASE_TABLE (size) { ; }
 
@@ -144,6 +158,12 @@ public:
     {
       ((T*)data[i-BASE].col)[data[i-BASE].size] = acont;
       data[i-BASE].size++;
+    }
+
+  inline void ParallelAdd (int i, const T & acont)
+    {
+      auto oldval = AsAtomic (data[i-BASE].size)++;
+      ((T*)data[i-BASE].col)[oldval] = acont;
     }
 
   /// Inserts element acont into row i. 1-based. Does not test if already used, assumes to have mem

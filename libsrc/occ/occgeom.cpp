@@ -8,17 +8,72 @@
 #include "ShapeAnalysis_CheckSmallFace.hxx"
 #include "ShapeAnalysis_DataMapOfShapeListOfReal.hxx"
 #include "ShapeAnalysis_Surface.hxx"
-#include "BRepAlgoAPI_Fuse.hxx"
+
 #include "BRepCheck_Analyzer.hxx"
 #include "BRepLib.hxx"
 #include "ShapeBuild_ReShape.hxx"
 #include "ShapeFix.hxx"
 #include "ShapeFix_FixSmallFace.hxx"
 #include "Partition_Spliter.hxx"
+#include "BRepAlgoAPI_Fuse.hxx"
 
+#include "XSControl_WorkSession.hxx"
+#include "XSControl_TransferReader.hxx"
+#include "StepRepr_RepresentationItem.hxx"
+
+#ifndef _Standard_Version_HeaderFile
+#include <Standard_Version.hxx>
+#endif
+
+#if OCC_VERSION_HEX < 0x070000
+// pass
+#elif OCC_VERSION_HEX < 0x070200
+   #include "StlTransfer.hxx"
+   #include "TopoDS_Iterator.hxx"
+#else
+   #include "TopoDS_Iterator.hxx"
+#endif
 
 namespace netgen
 {
+void STEP_GetEntityName(const TopoDS_Shape & theShape, STEPCAFControl_Reader * aReader, char * acName)
+{
+   const Handle(XSControl_WorkSession)& theSession = aReader->Reader().WS();
+   const Handle(XSControl_TransferReader)& aTransferReader =
+      theSession->TransferReader();
+
+   Handle(Standard_Transient) anEntity =
+      aTransferReader->EntityFromShapeResult(theShape, 1);
+
+   if (anEntity.IsNull()) {
+      // as just mapped
+      anEntity = aTransferReader->EntityFromShapeResult (theShape,-1);
+   }
+
+   if (anEntity.IsNull()) {
+      // as anything
+      anEntity = aTransferReader->EntityFromShapeResult (theShape,4);
+   }
+
+   if (anEntity.IsNull()) {
+      cout<<"Warning: XSInterVertex_STEPReader::ReadAttributes()\nentity not found"<<endl;
+      strcpy(acName, "none");
+   }
+   else
+   {
+      Handle(StepRepr_RepresentationItem) aReprItem;
+      aReprItem =
+         Handle(StepRepr_RepresentationItem)::DownCast(anEntity);
+
+      if (aReprItem.IsNull()) {
+         cout<<"Error: STEPReader::ReadAttributes():\nStepRepr_RepresentationItem Is NULL"<<endl;
+      }
+      else
+         strcpy(acName, aReprItem->Name()->ToCString());
+   }
+}
+
+
    void OCCGeometry :: PrintNrShapes ()
    {
       TopExp_Explorer e;
@@ -118,7 +173,7 @@ namespace netgen
          {
             TopoDS_Edge edge = TopoDS::Edge(exp1.Current());
             if ( BRep_Tool::Degenerated(edge) )
-               rebuild->Remove(edge, false);
+               rebuild->Remove(edge);
          }
          shape = rebuild->Apply(shape);
       }
@@ -187,7 +242,7 @@ namespace netgen
                   cout << "(natural bounds added)" <<endl;
                TopoDS_Face newface = sff->Face();
 
-               rebuild->Replace(face, newface, Standard_False);
+               rebuild->Replace(face, newface);
             }
 
             // Set the original colour of the face to the newly created 
@@ -206,7 +261,7 @@ namespace netgen
          {
             TopoDS_Edge edge = TopoDS::Edge(exp1.Current());
             if ( BRep_Tool::Degenerated(edge) )
-               rebuild->Remove(edge, false);
+               rebuild->Remove(edge);
          }
          shape = rebuild->Apply(shape);
       }
@@ -270,7 +325,7 @@ namespace netgen
                if(replace)
                {
                   TopoDS_Wire newwire = sfw->Wire();
-                  rebuild->Replace(oldwire, newwire, Standard_False);
+                  rebuild->Replace(oldwire, newwire);
                }
 
                //delete sfw; sfw = NULL;
@@ -300,7 +355,7 @@ namespace netgen
                      cout << "removing degenerated edge " << emap.FindIndex(edge)
                         << " from vertex " << vmap.FindIndex(TopExp::FirstVertex (edge))
                         << " to vertex " << vmap.FindIndex(TopExp::LastVertex (edge)) << endl;
-                     rebuild->Remove(edge, false);
+                     rebuild->Remove(edge);
                   }
                }
             }
@@ -318,7 +373,7 @@ namespace netgen
             {
                TopoDS_Edge edge = TopoDS::Edge(exp1.Current());
                if ( BRep_Tool::Degenerated(edge) )
-                  rebuild->Remove(edge, false);
+                  rebuild->Remove(edge);
             }
             shape = rebuild->Apply(shape);
          }
@@ -444,7 +499,7 @@ namespace netgen
          {
             TopoDS_Edge edge = TopoDS::Edge(exp1.Current());
             if ( BRep_Tool::Degenerated(edge) )
-               rebuild->Remove(edge, false);
+               rebuild->Remove(edge);
          }
          shape = rebuild->Apply(shape);
       }
@@ -485,7 +540,7 @@ namespace netgen
                   BRepLib::OrientClosedSolid (newsolid);
                   Handle_ShapeBuild_ReShape rebuild = new ShapeBuild_ReShape;
                   //		  rebuild->Apply(shape);
-                  rebuild->Replace(solid, newsolid, Standard_False);
+                  rebuild->Replace(solid, newsolid);
                   TopoDS_Shape newshape = rebuild->Apply(shape, TopAbs_COMPSOLID);//, 1);
                   //		  TopoDS_Shape newshape = rebuild->Apply(shape);
                   shape = newshape;
@@ -907,7 +962,7 @@ namespace netgen
             TopoDS_Solid newsolid = solid;
             BRepLib::OrientClosedSolid (newsolid);
             Handle_ShapeBuild_ReShape rebuild = new ShapeBuild_ReShape;
-            rebuild->Replace(solid, newsolid, Standard_False);
+            rebuild->Replace(solid, newsolid);
 
             TopoDS_Shape newshape = rebuild->Apply(shape, TopAbs_SHAPE, 1);
             shape = newshape;
@@ -938,7 +993,11 @@ namespace netgen
    void OCCGeometry :: CalcBoundingBox ()
    {
       Bnd_Box bb;
+#if OCC_VERSION_HEX < 0x070000
       BRepBndLib::Add (shape, bb);
+#else
+      BRepBndLib::Add ((const TopoDS_Shape) shape, bb,(Standard_Boolean)true);
+#endif
 
       double x1,y1,z1,x2,y2,z2;
       bb.Get (x1,y1,z1,x2,y2,z2);
@@ -1109,7 +1168,7 @@ namespace netgen
       }
 
 
-      // For the IGES Reader, all the shapes can be exported as one compund shape 
+      // For the IGES Reader, all the shapes can be exported as one compound shape
       // using the "OneShape" member
       occgeo->shape = reader.OneShape();
       occgeo->face_colours = iges_colour_contents;
@@ -1155,7 +1214,7 @@ namespace netgen
 
       // Enable transfer of colours
       reader.SetColorMode(Standard_True);
-
+      reader.SetNameMode(Standard_True);
       Standard_Integer stat = reader.ReadFile((char*)filename);
 
       if(stat != IFSelect_RetDone)
@@ -1196,7 +1255,38 @@ namespace netgen
 
       occgeo->CalcBoundingBox();
       PrintContents (occgeo);
-
+      char * name = new char(50);
+      //string name;
+      STEP_GetEntityName(occgeo->shape,&reader,name);
+      occgeo->snames.Append(name);
+      TopExp_Explorer exp0,exp1;
+      
+      for (exp0.Init(occgeo->shape, TopAbs_FACE); exp0.More(); exp0.Next())
+      {
+         TopoDS_Face face = TopoDS::Face(exp0.Current());
+         STEP_GetEntityName(face,&reader,name);
+         occgeo->fnames.Append(name);
+         for (exp1.Init(face, TopAbs_EDGE); exp1.More(); exp1.Next())
+         {
+            TopoDS_Edge edge = TopoDS::Edge(exp1.Current());
+            STEP_GetEntityName(edge,&reader,name);
+            occgeo->enames.Append(name);
+         }
+      }
+      // Gerhard BEGIN
+//       cout << "Solid Names: "<<endl;
+//       for (int i=0;i<occgeo->snames.Size();i++)
+//         cout << occgeo->snames[i] << endl;
+//       cout << " " <<endl;
+//       cout << "Face Names: "<<endl;
+//       for (int i=0;i<occgeo->fnames.Size();i++)
+//         cout << occgeo->fnames[i] << endl;
+//       cout << " " <<endl;
+//       cout << "Edge Names: "<<endl;
+//       for (int i=0;i<occgeo->enames.Size();i++)
+//         cout << occgeo->enames[i] << endl;
+//       cout << " " <<endl;
+      // Gerhard END
       return occgeo;
    }
 
@@ -1473,7 +1563,7 @@ namespace netgen
                if (!stretchedpinfaces++)
                   str << "StretchedPinFace {Stretched pin face} ";
 
-               (*testout) << "Face " << i << " is a streched pin" << endl;
+               (*testout) << "Face " << i << " is a stretched pin" << endl;
                str << "StretchedPinFace/Face" << i << " ";
                str << "{Face " << i << " } ";
             }
@@ -1564,10 +1654,9 @@ namespace netgen
 
 
 
-  int OCCGeometry :: GenerateMesh (shared_ptr<Mesh> & mesh, MeshingParameters & mparam,
-      int perfstepsstart, int perfstepsend)
+  int OCCGeometry :: GenerateMesh (shared_ptr<Mesh> & mesh, MeshingParameters & mparam)
    {
-     return OCCGenerateMesh (*this, mesh, mparam, perfstepsstart, perfstepsend);
+     return OCCGenerateMesh (*this, mesh, mparam);
    }
 
 

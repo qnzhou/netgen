@@ -4,15 +4,18 @@
 
 #include <mystdlib.h>
 #include "meshing.hpp"
-#include <csg.hpp>
-#include <geometry2d.hpp>
+// #include <csg.hpp>
+// #include <geometry2d.hpp>
 #include <../interface/writeuser.hpp>
 
 
 using namespace netgen;
 
+extern const char *ngscript[];
+
 namespace netgen
 {
+  extern bool netgen_executable_started;
   extern shared_ptr<NetgenGeometry> ng_geometry;
 }
 
@@ -45,10 +48,87 @@ void TranslateException (const NgException & ex)
   PyErr_SetString(PyExc_RuntimeError, err.c_str());
 }
 
+static Transformation<3> global_trafo(Vec<3> (0,0,0));
 
 DLL_HEADER void ExportNetgenMeshing(py::module &m) 
 {
+  py::register_exception<NgException>(m, "NgException");
+  m.attr("_netgen_executable_started") = py::cast(netgen::netgen_executable_started);
+  string script;
+  const char ** hcp = ngscript;
+  while (*hcp)
+      script += *hcp++;
+
+  m.attr("_ngscript") = py::cast(script);
+
+  py::class_<NGDummyArgument>(m, "NGDummyArgument")
+    .def("__bool__", []( NGDummyArgument &self ) { return false; } )
+    ;
   
+  py::class_<Point<2>> (m, "Point2d")
+    .def(py::init<double,double>())
+    .def ("__str__", &ToString<Point<2>>)
+    .def(py::self-py::self)
+    .def(py::self+Vec<2>())
+    .def(py::self-Vec<2>())
+    ;
+
+  py::class_<Point<3>> (m, "Point3d")
+    .def(py::init<double,double,double>())
+    .def ("__str__", &ToString<Point<3>>)
+    .def(py::self-py::self)
+    .def(py::self+Vec<3>())
+    .def(py::self-Vec<3>())
+    ;
+
+  m.def ("Pnt", FunctionPointer
+           ([](double x, double y, double z) { return global_trafo(Point<3>(x,y,z)); }));
+  m.def ("Pnt", FunctionPointer
+           ([](double x, double y) { return Point<2>(x,y); }));
+
+           
+  m.def ("Pnt", FunctionPointer
+           ([](double x, double y, double z) { return Point<3>(x,y,z); }));
+  m.def ("Pnt", FunctionPointer
+           ([](double x, double y) { return Point<2>(x,y); }));
+
+  py::class_<Vec<2>> (m, "Vec2d")
+    .def(py::init<double,double>())
+    .def ("__str__", &ToString<Vec<3>>)
+    .def(py::self+py::self)
+    .def(py::self-py::self)
+    .def(-py::self)
+    .def(double()*py::self)
+    .def("Norm", &Vec<2>::Length)
+    ;
+
+  py::class_<Vec<3>> (m, "Vec3d")
+    .def(py::init<double,double,double>())
+    .def ("__str__", &ToString<Vec<3>>)
+    .def(py::self+py::self)
+    .def(py::self-py::self)
+    .def(-py::self)
+    .def(double()*py::self)
+    .def("Norm", &Vec<3>::Length)
+    ;
+
+  m.def ("Vec", FunctionPointer
+           ([] (double x, double y, double z) { return global_trafo(Vec<3>(x,y,z)); }));
+  m.def ("Vec", FunctionPointer
+           ([] (double x, double y) { return Vec<2>(x,y); }));
+
+
+  m.def ("SetTransformation", FunctionPointer
+           ([](int dir, double angle)
+            {
+              if (dir > 0)
+                global_trafo.SetAxisRotation (dir, angle*M_PI/180);
+              else
+                global_trafo = Transformation<3> (Vec<3>(0,0,0));
+            }),
+         py::arg("dir")=int(0), py::arg("angle")=int(0));
+
+
   
   py::class_<PointIndex>(m, "PointId")
     .def(py::init<int>())
@@ -116,6 +196,11 @@ DLL_HEADER void ExportNetgenMeshing(py::module &m)
               throw py::index_error();
 	  return self[index];
 	}))
+    .def("__setitem__", FunctionPointer([](MeshPoint & self, int index, double val) {
+	  if(index<0 || index>2)
+              throw py::index_error();
+	  self(index) = val;
+	}))
     ;
   
   py::class_<Element>(m, "Element3D")
@@ -125,6 +210,13 @@ DLL_HEADER void ExportNetgenMeshing(py::module &m)
                                {
                                  new (instance) Element(TET);
                                  for (int i = 0; i < 4; i++)
+                                   (*instance)[i] = py::extract<PointIndex>(vertices[i])();
+                                 instance->SetIndex(index);
+                               }
+                             else if (py::len(vertices) == 5)
+                               {
+                                 new (instance) Element(PYRAMID);
+                                 for (int i = 0; i < 5; i++)
                                    (*instance)[i] = py::extract<PointIndex>(vertices[i])();
                                  instance->SetIndex(index);
                                }
@@ -158,6 +250,14 @@ DLL_HEADER void ExportNetgenMeshing(py::module &m)
                                        li.append (py::cast(self[i]));
                                      return li;
                                    }))
+    .def_property_readonly("points", 
+                  FunctionPointer ([](const Element & self) -> py::list
+                                   {
+                                     py::list li;
+                                     for (int i = 0; i < self.GetNP(); i++)
+                                       li.append (py::cast(self[i]));
+                                     return li;
+                                   }))
     ;
 
   py::class_<Element2d>(m, "Element2D")
@@ -170,15 +270,25 @@ DLL_HEADER void ExportNetgenMeshing(py::module &m)
                                  for (int i = 0; i < 3; i++)
                                    (*instance)[i] = py::extract<PointIndex>(vertices[i])();
                                  instance->SetIndex(index);
+                                 return;
                                }
-                             else
+                             if (py::len(vertices) == 4)
                                {
                                  new (instance) Element2d(QUAD);
                                  for (int i = 0; i < 4; i++)
                                    (*instance)[i] = py::extract<PointIndex>(vertices[i])();
                                  instance->SetIndex(index);
+                                 return;
                                }
-                               
+                             if (py::len(vertices) == 6)
+                               {
+                                 new (instance) Element2d(TRIG6);
+                                 for(int i = 0; i<6; i++)
+                                   (*instance)[i] = py::extract<PointIndex>(vertices[i])();
+                                 instance->SetIndex(index);
+                                 return;
+                               }
+                             throw NgException("Inconsistent number of vertices in Element2D");
                            },
           py::arg("index")=1,py::arg("vertices"),
          "create surface element"
@@ -192,6 +302,14 @@ DLL_HEADER void ExportNetgenMeshing(py::module &m)
                                       li.append(py::cast(self[i]));
                                     return li;
                                   }))
+    .def_property_readonly("points", 
+                  FunctionPointer ([](const Element2d & self) -> py::list
+                                   {
+                                     py::list li;
+                                     for (int i = 0; i < self.GetNP(); i++)
+                                       li.append (py::cast(self[i]));
+                                     return li;
+                                   }))
     ;
 
   py::class_<Segment>(m, "Element1D")
@@ -202,6 +320,8 @@ DLL_HEADER void ExportNetgenMeshing(py::module &m)
                              for (int i = 0; i < 2; i++)
                                (*instance)[i] = py::extract<PointIndex>(vertices[i])();
                              instance -> si = index;
+			     // needed for codim2 in 3d
+			     instance -> edgenr = index;
                              if (len(surfaces))
                                {
                                  instance->surfnr1 = py::extract<int>(surfaces[0])();
@@ -222,6 +342,14 @@ DLL_HEADER void ExportNetgenMeshing(py::module &m)
                                        li.append (py::cast(self[i]));
                                      return li;
                                    }))
+    .def_property_readonly("points", 
+                  FunctionPointer ([](const Segment & self) -> py::list
+                                   {
+                                     py::list li;
+                                     for (int i = 0; i < self.GetNP(); i++)
+                                       li.append (py::cast(self[i]));
+                                     return li;
+                                   }))
     .def_property_readonly("surfaces", 
                   FunctionPointer ([](const Segment & self) -> py::list
                                    {
@@ -230,6 +358,14 @@ DLL_HEADER void ExportNetgenMeshing(py::module &m)
                                      li.append (py::cast(self.surfnr2));
                                      return li;
                                    }))
+    .def_property_readonly("index", FunctionPointer([](const Segment &self) -> size_t
+		  {
+		    return self.si;
+		  }))
+    .def_property_readonly("edgenr", FunctionPointer([](const Segment & self) -> size_t
+						     {
+						       return self.edgenr;
+						     }))
     ;
 
 
@@ -281,7 +417,10 @@ DLL_HEADER void ExportNetgenMeshing(py::module &m)
     .def_property("domin", &FaceDescriptor::DomainIn, &FaceDescriptor::SetDomainIn)
     .def_property("domout", &FaceDescriptor::DomainOut, &FaceDescriptor::SetDomainOut)
     .def_property("bc", &FaceDescriptor::BCProperty, &FaceDescriptor::SetBCProperty)
-    .def_property_readonly("bcname", FunctionPointer ([](FaceDescriptor & self) -> string { return self.GetBCName(); }))
+    .def_property("bcname",
+                  [](FaceDescriptor & self) -> string { return self.GetBCName(); },
+                  [](FaceDescriptor & self, string name) { self.SetBCName(new string(name)); } // memleak
+                  )
     .def("SetSurfaceColor", [](FaceDescriptor & self, py::list color )
           {
             Vec3d c;
@@ -294,18 +433,33 @@ DLL_HEADER void ExportNetgenMeshing(py::module &m)
 
   
 
-  ExportArray<Element>(m);
-  ExportArray<Element2d>(m);
-  ExportArray<Segment>(m);
+  ExportArray<Element,0,size_t>(m);
+  ExportArray<Element2d,0,size_t>(m);
+  ExportArray<Segment,0,size_t>(m);
   ExportArray<Element0d>(m);
   ExportArray<MeshPoint,PointIndex::BASE,PointIndex>(m);
   ExportArray<FaceDescriptor>(m);
 
   py::implicitly_convertible< int, PointIndex>();
+
+  py::class_<NetgenGeometry, shared_ptr<NetgenGeometry>> (m, "NetgenGeometry")
+             ;
   
   py::class_<Mesh,shared_ptr<Mesh>>(m, "Mesh")
     // .def(py::init<>("create empty mesh"))
 
+    .def(py::init( [] (int dim)
+                   {
+                     auto mesh = make_shared<Mesh>();
+                     mesh -> SetDimension(dim);
+                     SetGlobalMesh(mesh);  // for visualization
+                     mesh -> SetGeometry (make_shared<NetgenGeometry>());
+                     return mesh;
+                   } ),
+         py::arg("dim")=3         
+         )
+
+    /*
     .def("__init__",
          [](Mesh *instance, int dim)
                            {
@@ -314,32 +468,54 @@ DLL_HEADER void ExportNetgenMeshing(py::module &m)
                            },
            py::arg("dim")=3
           )
-
+    */
     
     .def("__str__", &ToString<Mesh>)
     .def("Load",  FunctionPointer 
 	 ([](Mesh & self, const string & filename)
 	  {
-            istream * infile;
+	    istream * infile;
+
+#ifdef PARALLEL
+	    MPI_Comm_rank(MPI_COMM_WORLD, &id);
+	    MPI_Comm_size(MPI_COMM_WORLD, &ntasks);
+	    
+	    char* buf = nullptr;
+	    int strs = 0;
+	    if(id==0) {
+#endif
             if (filename.find(".vol.gz") != string::npos)
               infile = new igzstream (filename.c_str());
             else
               infile = new ifstream (filename.c_str());
 	    // ifstream input(filename);
 #ifdef PARALLEL
-	    // int id;
-	    MPI_Comm_rank(MPI_COMM_WORLD, &id);
-	    MPI_Comm_size(MPI_COMM_WORLD, &ntasks);
-
-	    if (id == 0)
-	      {
-		self.Load(*infile);	      
+	    //still inside id==0-bracket...
+	        self.Load(*infile);	      
 		self.Distribute();
+
+		/** Copy the rest of the file into a string (for geometry) **/
+		stringstream geom_part;
+		geom_part << infile->rdbuf();
+		string geom_part_string = geom_part.str();
+		strs = geom_part_string.size();
+		buf = new char[strs];
+		memcpy(buf, geom_part_string.c_str(), strs*sizeof(char));
 	      }
-	    else
-	      {
-		self.SendRecvMesh();
-	      }
+	    else {
+	      self.SendRecvMesh();
+	    }
+
+	    /** Scatter the geometry-string **/
+	    MPI_Bcast(&strs, 1, MPI_INT, 0, MPI_COMM_WORLD); 
+	    if(id!=0)
+	      buf = new char[strs];
+	    MPI_Bcast(buf, strs, MPI_CHAR, 0, MPI_COMM_WORLD);
+	    if(id==0)
+	      delete infile;
+	    infile = new istringstream(string((const char*)buf, (size_t)strs));
+	    delete[] buf;
+	    
 #else
 	    self.Load(*infile);
 #endif
@@ -349,16 +525,21 @@ DLL_HEADER void ExportNetgenMeshing(py::module &m)
 		if (hgeom)
 		  {
 		    ng_geometry.reset (hgeom);
+                    self.SetGeometry(ng_geometry);
 		    break;
 		  }
 	      }
+	    if (!ng_geometry)
+	      ng_geometry = make_shared<NetgenGeometry>();
+	    self.SetGeometry(ng_geometry);
+	    delete infile;
 	  }))
     // static_cast<void(Mesh::*)(const string & name)>(&Mesh::Load))
     .def("Save", static_cast<void(Mesh::*)(const string & name)const>(&Mesh::Save))
     .def("Export",
          [] (Mesh & self, string filename, string format)
           {
-            if (WriteUserFormat (format, self, *self.GetGeometry(), filename))
+            if (WriteUserFormat (format, self, /* *self.GetGeometry(), */ filename))
               {
                 string err = string ("nothing known about format")+format;
                 Array<const char*> names, extensions;
@@ -374,15 +555,15 @@ DLL_HEADER void ExportNetgenMeshing(py::module &m)
     .def_property("dim", &Mesh::GetDimension, &Mesh::SetDimension)
 
     .def("Elements3D", 
-         static_cast<Array<Element>&(Mesh::*)()> (&Mesh::VolumeElements),
+         static_cast<Array<Element,0,size_t>&(Mesh::*)()> (&Mesh::VolumeElements),
          py::return_value_policy::reference)
 
     .def("Elements2D", 
-         static_cast<Array<Element2d>&(Mesh::*)()> (&Mesh::SurfaceElements),
+         static_cast<Array<Element2d,0,size_t>&(Mesh::*)()> (&Mesh::SurfaceElements),
          py::return_value_policy::reference)
 
     .def("Elements1D", 
-         static_cast<Array<Segment>&(Mesh::*)()> (&Mesh::LineSegments),
+         static_cast<Array<Segment,0,size_t>&(Mesh::*)()> (&Mesh::LineSegments),
          py::return_value_policy::reference)
 
     .def("Elements0D", FunctionPointer([] (Mesh & self) -> Array<Element0d>&
@@ -398,6 +579,8 @@ DLL_HEADER void ExportNetgenMeshing(py::module &m)
     .def("FaceDescriptor", static_cast<FaceDescriptor&(Mesh::*)(int)> (&Mesh::GetFaceDescriptor),
          py::return_value_policy::reference)
     .def("GetNFaceDescriptors", &Mesh::GetNFD)
+
+    .def("GetNCD2Names", &Mesh::GetNCD2Names)
     
 
     .def("__getitem__", FunctionPointer ([](const Mesh & self, PointIndex pi)
@@ -434,7 +617,19 @@ DLL_HEADER void ExportNetgenMeshing(py::module &m)
                                   {
                                     return self.AddFaceDescriptor (fd);
                                   }))
-
+    
+    .def ("DeleteSurfaceElement",
+          FunctionPointer ([](Mesh & self, SurfaceElementIndex i)
+                           {
+                             return self.DeleteSurfaceElement (i);
+                           }))
+    
+    .def ("Compress", FunctionPointer ([](Mesh & self)
+                                       {
+                                         return self.Compress ();
+                                       }))
+    
+    
     .def ("SetBCName", &Mesh::SetBCName)
     .def ("GetBCName", FunctionPointer([](Mesh & self, int bc)->string 
                                        { return self.GetBCName(bc); }))
@@ -442,7 +637,31 @@ DLL_HEADER void ExportNetgenMeshing(py::module &m)
     .def ("GetMaterial", FunctionPointer([](Mesh & self, int domnr)
                                          { return string(self.GetMaterial(domnr)); }))
 
-    .def ("GenerateVolumeMesh",
+    .def ("GetCD2Name", &Mesh::GetCD2Name)
+    .def("SetCD2Name", &Mesh::SetCD2Name)
+
+    .def ("AddPointIdentification", [](Mesh & self, py::object pindex1, py::object pindex2, int identnr, int type)
+                           {
+			     if(py::extract<PointIndex>(pindex1).check() && py::extract<PointIndex>(pindex2).check())
+			       {
+				 self.GetIdentifications().Add (py::extract<PointIndex>(pindex1)(), py::extract<PointIndex>(pindex2)(), identnr);
+				 self.GetIdentifications().SetType(identnr, Identifications::ID_TYPE(type)); // type = 2 ... periodic
+			       }
+                           },
+          //py::default_call_policies(),
+          py::arg("pid1"),
+           py::arg("pid2"),
+           py::arg("identnr"),
+           py::arg("type"))
+    .def ("CalcLocalH", &Mesh::CalcLocalH)
+    .def ("SetMaxHDomain", [] (Mesh& self, py::list maxhlist)
+          {
+            Array<double> maxh;
+            for(auto el : maxhlist)
+              maxh.Append(py::cast<double>(el));
+            self.SetMaxHDomain(maxh);
+          })
+    .def ("GenerateVolumeMesh", 
           [](Mesh & self, py::object pymp)
            {
              cout << "generate vol mesh" << endl;
@@ -476,19 +695,29 @@ DLL_HEADER void ExportNetgenMeshing(py::module &m)
                Refinement().Refine(self);
            }))
 
+    .def ("SecondOrder", FunctionPointer
+          ([](Mesh & self)
+           {
+             if (self.GetGeometry())
+               self.GetGeometry()->GetRefinement().MakeSecondOrder(self);
+             else
+               Refinement().MakeSecondOrder(self);
+           }))
+
+    .def ("GetGeometry", [] (Mesh& self) { return self.GetGeometry(); })
+    .def ("SetGeometry", [](Mesh & self, shared_ptr<NetgenGeometry> geo)
+           {
+             self.SetGeometry(geo);
+           })
+
+    /*
     .def ("SetGeometry", FunctionPointer
           ([](Mesh & self, shared_ptr<CSGeometry> geo)
            {
              self.SetGeometry(geo);
            }))
-
-    // TODO: fix this dependency on libgeom2d.so
-//     .def ("SetGeometry", FunctionPointer
-//           ([](Mesh & self, shared_ptr<SplineGeometry2d> geo)
-//            {
-//              self.SetGeometry(geo);
-//            }))
-
+    */
+    
     .def ("BuildSearchTree", &Mesh::BuildElementSearchTree)
 
     .def ("BoundaryLayer", FunctionPointer 
@@ -548,27 +777,53 @@ DLL_HEADER void ExportNetgenMeshing(py::module &m)
              GenerateBoundaryLayer (self, blp);
            }
            ))
+
+    .def ("Scale", FunctionPointer([](Mesh & self, double factor)
+				   {
+				     for(auto i = 0; i<self.GetNP();i++)
+				       self.Point(i).Scale(factor);
+				   }))
                                             
     ;
   
 
+  py::enum_<MESHING_STEP>(m,"MeshingStep")
+    .value("MESHEDGES",MESHCONST_MESHEDGES)
+    .value("MESHSURFACE",MESHCONST_OPTSURFACE)
+    .value("MESHVOLUME",MESHCONST_OPTVOLUME)
+    ;
+  
   typedef MeshingParameters MP;
   py::class_<MP> (m, "MeshingParameters")
     .def(py::init<>())
     .def("__init__",
-         [](MP *instance, double maxh, bool quad_dominated, int optsteps2d, int optsteps3d)
+         [](MP *instance, double maxh, bool quad_dominated, int optsteps2d, int optsteps3d,
+	    MESHING_STEP perfstepsend, int only3D_domain, const string & meshsizefilename,
+            double grading, double curvaturesafety, double segmentsperedge)
                            {
                              new (instance) MeshingParameters;
                              instance->maxh = maxh;
                              instance->quad = int(quad_dominated);
                              instance->optsteps2d = optsteps2d;
-                             instance->optsteps3d = optsteps3d;
+                             instance->optsteps3d = optsteps3d;			     
+			     instance->only3D_domain_nr = only3D_domain;
+                             instance->perfstepsend = perfstepsend;
+                             instance->meshsizefilename = meshsizefilename;
+
+                             instance->grading = grading;
+                             instance->curvaturesafety = curvaturesafety;
+                             instance->segmentsperedge = segmentsperedge;
                            },
            py::arg("maxh")=1000,
            py::arg("quad_dominated")=false,
            py::arg("optsteps2d") = 3,
-           py::arg("optsteps3d") = 3
-           ,
+	 py::arg("optsteps3d") = 3,
+	 py::arg("perfstepsend") = MESHCONST_OPTVOLUME,
+	 py::arg("only3D_domain") = 0,
+         py::arg("meshsizefilename") = "",
+           py::arg("grading")=0.3,
+           py::arg("curvaturesafety")=2,
+           py::arg("segmentsperedge")=1,
          "create meshing parameters"
           )
     .def("__str__", &ToString<MP>)
@@ -598,10 +853,8 @@ DLL_HEADER void ExportNetgenMeshing(py::module &m)
                                                    }));
 }
 
-PYBIND11_PLUGIN(libmesh) {
-  py::module m("mesh", "pybind mesh");
+PYBIND11_MODULE(libmesh, m) {
   ExportNetgenMeshing(m);
-  return m.ptr();
 }
 #endif
 

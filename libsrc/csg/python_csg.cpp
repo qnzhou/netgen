@@ -24,7 +24,7 @@ class SPSolid
   double maxh = -1;
   string material;
   bool owner;
-  double red, green, blue;
+  double red = 0, green = 0, blue = 1;
   bool transp = false;
 public:
   enum optyp { TERM, SECTION, UNION, SUB };
@@ -163,77 +163,9 @@ namespace netgen
 }
 
 
-static Transformation<3> global_trafo(Vec<3> (0,0,0));
 
 DLL_HEADER void ExportCSG(py::module &m)
 {
-  py::class_<NGDummyArgument>(m, "NGDummyArgument")
-    .def("__bool__", []( NGDummyArgument &self ) { return false; } )
-    ;
-  
-  py::class_<Point<2>> (m, "Point2d")
-    .def(py::init<double,double>())
-    .def ("__str__", &ToString<Point<2>>)
-    .def(py::self-py::self)
-    .def(py::self+Vec<2>())
-    .def(py::self-Vec<2>())
-    ;
-
-  py::class_<Point<3>> (m, "Point3d")
-    .def(py::init<double,double,double>())
-    .def ("__str__", &ToString<Point<3>>)
-    .def(py::self-py::self)
-    .def(py::self+Vec<3>())
-    .def(py::self-Vec<3>())
-    ;
-
-  m.def ("Pnt", FunctionPointer
-           ([](double x, double y, double z) { return global_trafo(Point<3>(x,y,z)); }));
-  m.def ("Pnt", FunctionPointer
-           ([](double x, double y) { return Point<2>(x,y); }));
-
-           
-  m.def ("Pnt", FunctionPointer
-           ([](double x, double y, double z) { return Point<3>(x,y,z); }));
-  m.def ("Pnt", FunctionPointer
-           ([](double x, double y) { return Point<2>(x,y); }));
-
-  m.def ("SetTransformation", FunctionPointer
-           ([](int dir, double angle)
-            {
-              if (dir > 0)
-                global_trafo.SetAxisRotation (dir, angle*M_PI/180);
-              else
-                global_trafo = Transformation<3> (Vec<3>(0,0,0));
-            }),
-         py::arg("dir")=int(0), py::arg("angle")=int(0));
-
-  py::class_<Vec<2>> (m, "Vec2d")
-    .def(py::init<double,double>())
-    .def ("__str__", &ToString<Vec<3>>)
-    .def(py::self+py::self)
-    .def(py::self-py::self)
-    .def(-py::self)
-    .def(double()*py::self)
-    .def("Norm", &Vec<2>::Length)
-    ;
-
-  py::class_<Vec<3>> (m, "Vec3d")
-    .def(py::init<double,double,double>())
-    .def ("__str__", &ToString<Vec<3>>)
-    .def(py::self+py::self)
-    .def(py::self-py::self)
-    .def(-py::self)
-    .def(double()*py::self)
-    .def("Norm", &Vec<3>::Length)
-    ;
-
-  m.def ("Vec", FunctionPointer
-           ([] (double x, double y, double z) { return global_trafo(Vec<3>(x,y,z)); }));
-  m.def ("Vec", FunctionPointer
-           ([] (double x, double y) { return Vec<2>(x,y); }));
-
-
   py::class_<SplineGeometry<2>> (m, "SplineCurve2d")
     .def(py::init<>())
     .def ("AddPoint", FunctionPointer
@@ -254,6 +186,63 @@ DLL_HEADER void ExportCSG(py::module &m)
            }))
     ;
 
+  py::class_<SplineGeometry<3>,shared_ptr<SplineGeometry<3>>> (m,"SplineCurve3d")
+    .def(py::init<>())
+    .def ("AddPoint", FunctionPointer
+          ([] (SplineGeometry<3> & self, double x, double y, double z)
+           {
+             self.geompoints.Append (GeomPoint<3> (Point<3> (x,y,z)));
+             return self.geompoints.Size()-1;
+           }))
+    .def ("AddSegment", FunctionPointer
+          ([] (SplineGeometry<3> & self, int i1, int i2)
+           {
+             self.splines.Append (new LineSeg<3> (self.geompoints[i1], self.geompoints[i2]));
+           }))
+    .def ("AddSegment", FunctionPointer
+          ([] (SplineGeometry<3> & self, int i1, int i2, int i3)
+           {
+             self.splines.Append (new SplineSeg3<3> (self.geompoints[i1], self.geompoints[i2], self.geompoints[i3]));
+           }))
+    ;
+
+  py::class_<SplineSurface, shared_ptr<SplineSurface>> (m, "SplineSurface",
+                        "A surface for co dim 2 integrals on the splines")
+    .def("__init__", FunctionPointer  ([](SplineSurface* instance, shared_ptr<SPSolid> base, py::list cuts)
+	     {
+	       auto primitive = dynamic_cast<OneSurfacePrimitive*> (base->GetSolid()->GetPrimitive());
+	       auto acuts = make_shared<Array<shared_ptr<OneSurfacePrimitive>>>();
+	       for(int i = 0; i<py::len(cuts);i++)
+		 {
+		   py::extract<shared_ptr<SPSolid>> sps(cuts[i]);
+		   if(!sps.check())
+		     throw NgException("Cut must be SurfacePrimitive in constructor of SplineSurface!");
+		   auto sp = dynamic_cast<OneSurfacePrimitive*>(sps()->GetSolid()->GetPrimitive());
+		   if(sp)
+		     acuts->Append(shared_ptr<OneSurfacePrimitive>(sp));
+		   else
+		     throw NgException("Cut must be SurfacePrimitive in constructor of SplineSurface!");
+		 }
+	       if(!primitive)
+		 throw NgException("Base is not a SurfacePrimitive in constructor of SplineSurface!");
+	       new (instance) SplineSurface(shared_ptr<OneSurfacePrimitive>(primitive),acuts);
+               py::object obj = py::cast(instance);
+	     }),py::arg("base"), py::arg("cuts")=py::list())
+    .def("AddPoint", FunctionPointer
+	 ([] (SplineSurface & self, double x, double y, double z, bool hpref)
+	  {
+	    self.AppendPoint(Point<3>(x,y,z),hpref);
+	    return self.GetNP()-1;
+	  }),
+	 py::arg("x"),py::arg("y"),py::arg("z"),py::arg("hpref")=false)
+    .def("AddSegment", FunctionPointer
+	 ([] (SplineSurface & self, int i1, int i2, string bcname, double maxh)
+	  {
+            auto seg = make_shared<LineSeg<3>>(self.GetPoint(i1),self.GetPoint(i2));
+	    self.AppendSegment(seg,bcname,maxh);
+	  }),
+	 py::arg("pnt1"),py::arg("pnt2"),py::arg("bcname")="default", py::arg("maxh")=-1.)
+    ;
   
   py::class_<SPSolid, shared_ptr<SPSolid>> (m, "Solid")
     .def ("__str__", &ToString<SPSolid>)
@@ -290,6 +279,12 @@ DLL_HEADER void ExportCSG(py::module &m)
                                        Solid * sol = new Solid (sp);
                                        return make_shared<SPSolid> (sol);
                                      }));
+  m.def ("Ellipsoid", FunctionPointer([](Point<3> m, Vec<3> a, Vec<3> b, Vec<3> c)
+                                     {
+                                       Ellipsoid * ell = new Ellipsoid (m, a, b, c);
+                                       Solid * sol = new Solid (ell);
+                                       return make_shared<SPSolid> (sol);
+                                     }));
   m.def ("Plane", FunctionPointer([](Point<3> p, Vec<3> n)
                                     {
                                       Plane * sp = new Plane (p,n);
@@ -314,11 +309,25 @@ DLL_HEADER void ExportCSG(py::module &m)
                                            Solid * sol = new Solid (brick);
                                            return make_shared<SPSolid> (sol);
                                          }));
+  m.def ("Torus", FunctionPointer([](Point<3> c, Vec<3> n, double R, double r)
+                                         {
+                                           Torus * torus = new Torus (c,n,R,r);
+                                           Solid * sol = new Solid (torus);
+                                           return make_shared<SPSolid> (sol);
+                                         }));
   m.def ("Revolution", FunctionPointer([](Point<3> p1, Point<3> p2,
                                             const SplineGeometry<2> & spline)
                                          {
                                            Revolution * rev = new Revolution (p1, p2, spline);
                                            Solid * sol = new Solid(rev);
+                                           return make_shared<SPSolid> (sol);
+                                         }));
+  m.def ("Extrusion", FunctionPointer([](const SplineGeometry<3> & path,
+					 const SplineGeometry<2> & profile,
+					 Vec<3> n)
+                                         {
+                                           Extrusion * extr = new Extrusion (path,profile,n);
+                                           Solid * sol = new Solid(extr);
                                            return make_shared<SPSolid> (sol);
                                          }));
   
@@ -332,7 +341,7 @@ DLL_HEADER void ExportCSG(py::module &m)
                                   }));
 
 
-  py::class_<CSGeometry,shared_ptr<CSGeometry>> (m, "CSGeometry")
+  py::class_<CSGeometry, NetgenGeometry, shared_ptr<CSGeometry>> (m, "CSGeometry")
     .def(py::init<>())
     .def("__init__", 
                                            [](CSGeometry *instance, const string & filename)
@@ -371,15 +380,25 @@ DLL_HEADER void ExportCSG(py::module &m)
                                    self.Save (filename);
                                  }))
     .def("Add",
-         [] (CSGeometry & self, shared_ptr<SPSolid> solid, py::list bcmod)
+         [] (CSGeometry & self, shared_ptr<SPSolid> solid, py::list bcmod, double maxh,
+             py::tuple col, bool transparent, int layer)
           {
             solid->AddSurfaces (self);
             solid->GiveUpOwner();
             int tlonr = self.SetTopLevelObject (solid->GetSolid());
             self.GetTopLevelObject(tlonr) -> SetMaterial(solid->GetMaterial());
             self.GetTopLevelObject(tlonr) -> SetRGB(solid->GetRed(),solid->GetGreen(),solid->GetBlue());
-            self.GetTopLevelObject(tlonr)->SetTransparent(solid->IsTransparent());
+            // self.GetTopLevelObject(tlonr)->SetTransparent(solid->IsTransparent());
+            self.GetTopLevelObject(tlonr)->SetTransparent(transparent);
+            self.GetTopLevelObject(tlonr)->SetMaxH(maxh);
+            self.GetTopLevelObject(tlonr)->SetLayer(layer);
 
+            // cout << "rgb = " << py::len(rgb) << endl;
+            if (py::len(col)==3)
+              self.GetTopLevelObject(tlonr) -> SetRGB(py::cast<double>(col[0]),
+                                                      py::cast<double>(col[1]),
+                                                      py::cast<double>(col[2]));
+            
             // bcmod is list of tuples ( solid, bcnr )
             for (int i = 0; i < py::len(bcmod); i++)
               {
@@ -408,7 +427,8 @@ DLL_HEADER void ExportCSG(py::module &m)
               }
             return tlonr;
           },
-          py::arg("solid"), py::arg("bcmod")=py::list()
+         py::arg("solid"), py::arg("bcmod")=py::list(), py::arg("maxh")=1e99,
+         py::arg("col")=py::tuple(), py::arg("transparent")=false, py::arg("layer")=1
          )
 
     .def("AddSurface", FunctionPointer
@@ -427,9 +447,35 @@ DLL_HEADER void ExportCSG(py::module &m)
           }),
          py::arg("surface"), py::arg("solid")
          )
-         
-
-    
+    .def("AddSplineSurface", FunctionPointer
+	 ([] (CSGeometry & self, shared_ptr<SplineSurface> surf)
+	  {
+	    auto cuttings = surf->CreateCuttingSurfaces();
+	    auto spsol = make_shared<SPSolid>(new Solid(surf.get()));
+	    for(auto cut : (*cuttings)){
+	      spsol = make_shared<SPSolid>(SPSolid::SECTION,spsol,make_shared<SPSolid>(new Solid(cut.get())));
+	    }
+	    spsol->AddSurfaces(self);
+	    int tlonr = self.SetTopLevelObject(spsol->GetSolid(), surf.get());
+	    self.GetTopLevelObject(tlonr) -> SetBCProp(surf->GetBase()->GetBCProperty());
+	    self.GetTopLevelObject(tlonr) -> SetBCName(surf->GetBase()->GetBCName());
+	    self.GetTopLevelObject(tlonr) -> SetMaxH(surf->GetBase()->GetMaxH());
+	    for(auto p : surf->GetPoints())
+		self.AddUserPoint(p);
+            self.AddSplineSurface(surf);
+	  }),
+	  py::arg("SplineSurface"))
+    .def("SingularEdge", [] (CSGeometry & self, shared_ptr<SPSolid> s1,shared_ptr<SPSolid> s2, double factor)
+         {
+           auto singedge = new SingularEdge(1, -1, self, s1->GetSolid(), s2->GetSolid(), factor);
+           self.singedges.Append (singedge);
+         })
+    .def("SingularPoint", [] (CSGeometry & self, shared_ptr<SPSolid> s1,shared_ptr<SPSolid> s2,
+                             shared_ptr<SPSolid> s3, double factor)
+         {
+           auto singpoint = new SingularPoint(1, s1->GetSolid(), s2->GetSolid(), s3->GetSolid(), factor);
+           self.singpoints.Append (singpoint);
+         })
     .def("CloseSurfaces", FunctionPointer
          ([] (CSGeometry & self, shared_ptr<SPSolid> s1, shared_ptr<SPSolid> s2, py::list aslices )
           {
@@ -467,7 +513,8 @@ DLL_HEADER void ExportCSG(py::module &m)
          py::arg("solid1"), py::arg("solid2"), py::arg("slices")
          )
     .def("CloseSurfaces", FunctionPointer
-         ([] (CSGeometry & self, shared_ptr<SPSolid> s1, shared_ptr<SPSolid> s2, int reflevels)
+         ([] (CSGeometry & self, shared_ptr<SPSolid> s1, shared_ptr<SPSolid> s2,
+              int reflevels, shared_ptr<SPSolid> domain_solid)
           {
             Array<int> si1, si2;
             s1->GetSolid()->GetSurfaceIndices (si1);
@@ -477,6 +524,9 @@ DLL_HEADER void ExportCSG(py::module &m)
 
             Flags flags;
             const TopLevelObject * domain = nullptr;
+            if (domain_solid)
+              domain = self.GetTopLevelObject(domain_solid->GetSolid());
+              
             self.AddIdentification 
               (new CloseSurfaceIdentification 
                (self.GetNIdentifications()+1, self, 
@@ -484,7 +534,7 @@ DLL_HEADER void ExportCSG(py::module &m)
                 domain,
                 flags));
           }),
-         py::arg("solid1"), py::arg("solid2"), py::arg("reflevels")=2
+         py::arg("solid1"), py::arg("solid2"), py::arg("reflevels")=2, py::arg("domain")=nullptr
          )
     
     .def("PeriodicSurfaces", FunctionPointer
@@ -501,6 +551,12 @@ DLL_HEADER void ExportCSG(py::module &m)
           }),
          py::arg("solid1"), py::arg("solid2")
          )
+
+    .def("AddPoint", [] (CSGeometry & self, Point<3> p, int index) -> CSGeometry&
+         {
+           self.AddUserPoint(CSGeometry::UserPoint(p, index));
+           return self;
+         })
     
     .def("GetTransparent", FunctionPointer
          ([] (CSGeometry & self, int tlonr)
@@ -559,7 +615,7 @@ DLL_HEADER void ExportCSG(py::module &m)
              geo->FindIdenticSurfaces(1e-8 * geo->MaxSize());
              try
                {
-                 geo->GenerateMesh (dummy, param, 0, 6);
+                 geo->GenerateMesh (dummy, param);
                }
              catch (NgException ex)
                {
@@ -597,10 +653,8 @@ DLL_HEADER void ExportCSG(py::module &m)
     ;
 }
 
-PYBIND11_PLUGIN(libcsg) {
-  py::module m("csg", "pybind csg");
+PYBIND11_MODULE(libcsg, m) {
   ExportCSG(m);
-  return m.ptr();
 }
 #endif
 

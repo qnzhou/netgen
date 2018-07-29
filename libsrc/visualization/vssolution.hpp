@@ -43,7 +43,13 @@ class DLL_HEADER VisualSceneSolution : public VisualScene
     Point<3> p;
   };
 
-  // #define USE_BUFFERS
+#ifndef WIN32
+  // use OpenGL vertex buffers from OpenGL 2.x
+  // not supported by some drivers on windows
+  // try on your own responsibility 
+#define USE_BUFFERS
+#endif
+  
 #ifdef USE_BUFFERS
   bool has_surfel_vbo = false;
   GLuint surfel_vbo[4]; //
@@ -130,7 +136,7 @@ public:
     SolData ();
     ~SolData ();
     
-    char * name;
+    string name;
     double * data;
     int components;
     int dist;
@@ -441,7 +447,8 @@ public:
 
 
 
-DLL_HEADER extern VisualSceneSolution vssolution;
+  // DLL_HEADER extern VisualSceneSolution vssolution;
+DLL_HEADER extern VisualSceneSolution & GetVSSolution();
 
 
 }

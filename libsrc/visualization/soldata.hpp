@@ -6,7 +6,16 @@ namespace netgen
 {
 
   using namespace std;
-
+  /*
+#if defined __AVX512F__
+  typedef __m512 tAVX;
+  typedef __m512d tAVXd;
+#elif defined __AVX__
+  typedef __m256 tAVX;
+  typedef __m256d tAVXd; 
+#endif
+  */
+  
   class SolutionData
   {
   protected:
@@ -92,14 +101,14 @@ namespace netgen
       return res;
     }
 
-#ifdef __AVX__
+#ifdef __SSE__
     virtual bool GetMultiSurfValue (size_t selnr, size_t facetnr, size_t npts,
-                                    const __m256d * xref, 
-                                    const __m256d * x, 
-                                    const __m256d * dxdxref, 
-                                    __m256d * values)
+                                    const tAVXd * xref, 
+                                    const tAVXd * x, 
+                                    const tAVXd * dxdxref, 
+                                    tAVXd * values)
     {
-      cerr << "GetMultiSurfVaue not overloaded" << endl;
+      cerr << "GetMultiSurfVaue not overloaded for SIMD<double>" << endl;
       return false;
     }
 #endif
@@ -113,7 +122,7 @@ namespace netgen
       return 1;
     }
 
-    void SetMultiDimComponent (int mc)
+    virtual void SetMultiDimComponent (int mc)
     { 
       if (mc >= GetNumMultiDimComponents()) mc = GetNumMultiDimComponents()-1;
       if (mc < 0) mc = 0;

@@ -108,7 +108,8 @@ void Ng_LoadMeshFromStream ( istream & input )
 	  break;
 	}
     }
-
+  if (!ng_geometry)
+    ng_geometry = make_shared<NetgenGeometry>();
   mesh->SetGeometry (ng_geometry);
 }
 
@@ -117,6 +118,11 @@ void Ng_LoadMeshFromStream ( istream & input )
 
 void Ng_LoadMesh (const char * filename)
 {
+  {
+      ifstream infile(filename);
+      if(!infile.good())
+          throw NgException(string("Error opening file ") + filename);
+  }
 #ifdef PARALLEL
   MPI_Comm_size(MPI_COMM_WORLD, &ntasks);
   MPI_Comm_rank(MPI_COMM_WORLD, &id);
@@ -540,6 +546,11 @@ char * Ng_GetSurfaceElementBCName (int ei)
 char * Ng_GetBCNumBCName (int bcnr)
 {
   return const_cast<char *>(mesh->GetBCName(bcnr).c_str());
+}
+
+char * Ng_GetCD2NumCD2Name (int cd2nr)
+{
+  return const_cast<char *>(mesh->GetCD2Name(cd2nr).c_str());
 }
 
 

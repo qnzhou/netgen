@@ -870,7 +870,7 @@ namespace netgen
 		   const BoxSphere<3> & box) const
   {
     // perform newton steps. normals parallel ?
-    // if not decideable: return 0 
+    // if not decidable: return 0 
   
     Point<3> p = box.Center();
     Vec<3> g1, g2, sol;
@@ -2027,7 +2027,8 @@ namespace netgen
 		      
 		      if (spi == -1)
 			{
-			  spi = specpoints.Append (SpecialPoint()) - 1;
+			  specpoints.Append (SpecialPoint());
+                          spi = specpoints.Size()-1;
 			  specpoint2point.Append (i);
 			  specpoints.Last().unconditional = 0;
 			  searchtree.Insert (apoints[i], spi);

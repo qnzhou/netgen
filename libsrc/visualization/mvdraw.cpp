@@ -63,8 +63,8 @@ namespace netgen
 
   int VisualScene :: selface;
   int VisualScene :: selelement;
-  int VisualScene :: selpoint;
-  int VisualScene :: selpoint2;
+  PointIndex VisualScene :: selpoint;
+  PointIndex VisualScene :: selpoint2;
   int VisualScene :: locpi;
   int VisualScene :: seledge;
 
@@ -832,7 +832,7 @@ namespace netgen
 
     MyMPI_Bcast (selface);
 
-    vssolution.Broadcast ();
+    netgen::GetVSSolution().Broadcast ();
   }
 #endif 
 

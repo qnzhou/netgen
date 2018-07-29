@@ -18,7 +18,7 @@ namespace netgen
 #define VSMALL 1e-10
 
 
-   bool merge_solids = 1;
+   DLL_HEADER bool merge_solids = 1;
 
 
   // can you please explain what you intend to compute here (JS) !!!
@@ -422,6 +422,10 @@ namespace netgen
          {
             mesh.GetFaceDescriptor(facenr).SetSurfColour(Vec3d(0.0,1.0,0.0));
          }
+
+         if(geom.fnames.Size()>=facenr) 
+             mesh.GetFaceDescriptor(facenr).SetBCName(&geom.fnames[facenr-1]);
+         mesh.GetFaceDescriptor(facenr).SetBCProperty(facenr);
          // ACHTUNG! STIMMT NICHT ALLGEMEIN (RG)
 
 
@@ -665,7 +669,7 @@ namespace netgen
             PrintMessage (2, "Face ", k, " / ", mesh.GetNFD(), " (parameter space projection)");
 
          if (surfmesherror)
-            cout << "Surface meshing error occured before (in " << surfmesherror << " faces)" << endl;
+            cout << "Surface meshing error occurred before (in " << surfmesherror << " faces)" << endl;
 
          //      Meshing2OCCSurfaces meshing(f2, bb);
          meshing.SetStartTime (starttime);
@@ -851,7 +855,7 @@ namespace netgen
       if (surfmesherror)
       {
          cout << "WARNING! NOT ALL FACES HAVE BEEN MESHED" << endl;
-         cout << "SURFACE MESHING ERROR OCCURED IN " << surfmesherror << " FACES:" << endl;
+         cout << "SURFACE MESHING ERROR OCCURRED IN " << surfmesherror << " FACES:" << endl;
          for (int i = 1; i <= geom.fmap.Extent(); i++)
             if (geom.facemeshstatus[i-1] == -1)
             {
@@ -974,6 +978,13 @@ namespace netgen
       NgProfiler::StopTimer (timer_opt2d);
 
       multithread.task = savetask;
+
+      // Gerhard BEGIN
+      for(int i = 0; i<mesh.GetNFD();i++)
+        mesh.SetBCName(i,mesh.GetFaceDescriptor(i+1).GetBCName());
+      // for(int i = 0; i<mesh.GetNDomains();i++)
+        // mesh.SetMaterial(i,geom.snames[i]);
+      // Gerhard END
    }
 
 
@@ -1126,7 +1137,12 @@ namespace netgen
             Handle(Geom_Surface) surf = BRep_Tool::Surface (face);
             Handle(Poly_Triangulation) triangulation = BRep_Tool::Triangulation (face, loc);
 
-            if (triangulation.IsNull()) continue;
+            if (triangulation.IsNull())
+              {
+                BRepTools::Clean (geom.shape);
+                BRepMesh_IncrementalMesh (geom.shape, 0.01, true);
+                triangulation = BRep_Tool::Triangulation (face, loc);
+              }
 
             BRepAdaptor_Surface sf(face, Standard_True);
             BRepLProp_SLProps prop(sf, 2, 1e-5);
@@ -1165,8 +1181,8 @@ namespace netgen
 
             Array<Line> lines(sections*nedges);
 
-            Box3dTree* searchtree =
-               new Box3dTree (bb.PMin(), bb.PMax());
+            BoxTree<3> * searchtree =
+              new BoxTree<3> (bb.PMin(), bb.PMax());
 
             int nlines = 0;
             for (int i = 1; i <= nedges && !multithread.terminate; i++)
@@ -1273,24 +1289,23 @@ namespace netgen
 
 
 
-  int OCCGenerateMesh (OCCGeometry & geom, shared_ptr<Mesh> & mesh, MeshingParameters & mparam,
-		       int perfstepsstart, int perfstepsend)
+  int OCCGenerateMesh (OCCGeometry & geom, shared_ptr<Mesh> & mesh, MeshingParameters & mparam)
    {
       multithread.percent = 0;
 
-      if (perfstepsstart <= MESHCONST_ANALYSE)
+      if (mparam.perfstepsstart <= MESHCONST_ANALYSE)
       {
-        // delete mesh;
-        // mesh = make_shared<Mesh>();
+         if(mesh.get() == nullptr)
+           mesh = make_shared<Mesh>();
          mesh->geomtype = Mesh::GEOM_OCC;
          
          OCCSetLocalMeshSize(geom,*mesh);
       }
 
-      if (multithread.terminate || perfstepsend <= MESHCONST_ANALYSE)
+      if (multithread.terminate || mparam.perfstepsend <= MESHCONST_ANALYSE)
          return TCL_OK;
 
-      if (perfstepsstart <= MESHCONST_MESHEDGES)
+      if (mparam.perfstepsstart <= MESHCONST_MESHEDGES)
       {
          OCCFindEdges (geom, *mesh);
 
@@ -1360,12 +1375,12 @@ namespace netgen
 #endif
       }
 
-      if (multithread.terminate || perfstepsend <= MESHCONST_MESHEDGES)
+      if (multithread.terminate || mparam.perfstepsend <= MESHCONST_MESHEDGES)
          return TCL_OK;
 
-      if (perfstepsstart <= MESHCONST_MESHSURFACE)
+      if (mparam.perfstepsstart <= MESHCONST_MESHSURFACE)
       {
-         OCCMeshSurface (geom, *mesh, perfstepsend);
+         OCCMeshSurface (geom, *mesh, mparam.perfstepsend);
          if (multithread.terminate) return TCL_OK;
 
 #ifdef LOG_STREAM
@@ -1384,10 +1399,10 @@ namespace netgen
          mesh->CalcSurfacesOfNode();
       }
 
-      if (multithread.terminate || perfstepsend <= MESHCONST_OPTSURFACE)
+      if (multithread.terminate || mparam.perfstepsend <= MESHCONST_OPTSURFACE)
          return TCL_OK;
 
-      if (perfstepsstart <= MESHCONST_MESHVOLUME)
+      if (mparam.perfstepsstart <= MESHCONST_MESHVOLUME)
       {
          multithread.task = "Volume meshing";
 
@@ -1426,10 +1441,10 @@ namespace netgen
 #endif
       }
 
-      if (multithread.terminate || perfstepsend <= MESHCONST_MESHVOLUME)
+      if (multithread.terminate || mparam.perfstepsend <= MESHCONST_MESHVOLUME)
          return TCL_OK;
 
-      if (perfstepsstart <= MESHCONST_OPTVOLUME)
+      if (mparam.perfstepsstart <= MESHCONST_OPTVOLUME)
       {
          multithread.task = "Volume optimization";
 
@@ -1460,6 +1475,9 @@ namespace netgen
       for (int i = 1; i <= mesh->GetNSeg(); i++)
          (*testout) << mesh->LineSegment(i) << endl;
 
+      for (int i = 0; i < mesh->GetNDomains(); i++)
+          if(geom.snames.Size())
+              mesh->SetMaterial( i+1, geom.snames[i] );
       return TCL_OK;
    }
 }

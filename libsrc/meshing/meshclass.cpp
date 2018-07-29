@@ -1,4 +1,5 @@
 #include <mystdlib.h>
+#include <atomic>
 #include "meshing.hpp"
 
 namespace netgen
@@ -7,7 +8,7 @@ namespace netgen
   static mutex buildsearchtree_mutex;
 
   Mesh :: Mesh ()
-    : surfarea(*this)
+    : surfarea(*this), topology(*this)
   {
     // volelements.SetName ("vol elements");
     // surfelements.SetName ("surf elements");
@@ -27,7 +28,7 @@ namespace netgen
     numvertices = -1;
     dimension = 3;
 
-    topology = new MeshTopology (*this);
+    // topology = new MeshTopology (*this);
     curvedelems = new CurvedElements (*this);
     clusters = new AnisotropicClusters (*this);
     ident = new Identifications (*this);
@@ -40,6 +41,7 @@ namespace netgen
     geomtype = NO_GEOM;
 
     bcnames.SetSize(0);
+    cd2names.SetSize(0);
 
 #ifdef PARALLEL
     paralleltop = new ParallelMeshTopology (*this);
@@ -56,7 +58,7 @@ namespace netgen
     delete segmentht;
     delete curvedelems;
     delete clusters;
-    delete topology;
+    // delete topology;
     delete ident;
     delete elementsearchtree;
     delete coarsemesh;
@@ -71,6 +73,9 @@ namespace netgen
 
     for (int i = 0; i < bcnames.Size(); i++ )
       delete bcnames[i];
+
+    for (int i = 0; i < cd2names.Size(); i++)
+      delete cd2names[i];
 
 #ifdef PARALLEL
     delete paralleltop;
@@ -94,6 +99,11 @@ namespace netgen
       if ( mesh2.bcnames[i] ) bcnames[i] = new string ( *mesh2.bcnames[i] );
       else bcnames[i] = 0;
 
+    cd2names.SetSize(mesh2.cd2names.Size());
+    for (int i=0; i < mesh2.cd2names.Size(); i++)
+      if (mesh2.cd2names[i]) cd2names[i] = new string(*mesh2.cd2names[i]);
+      else cd2names[i] = 0;
+
     return *this;
   }
 
@@ -107,7 +117,7 @@ namespace netgen
     surfelements.SetSize(0);
     volelements.SetSize(0);
     lockedpoints.SetSize(0);
-    surfacesonnode.SetSize(0);
+    // surfacesonnode.SetSize(0);
 
     delete boundaryedges;
     boundaryedges = NULL;
@@ -117,8 +127,9 @@ namespace netgen
 
     delete ident;
     ident = new Identifications (*this);
-    delete topology;
-    topology = new MeshTopology (*this);
+    // delete topology;
+    // topology = new MeshTopology (*this);
+    topology = MeshTopology (*this);
     delete curvedelems;
     curvedelems = new CurvedElements (*this);
     delete clusters;
@@ -126,6 +137,8 @@ namespace netgen
 
     for ( int i = 0; i < bcnames.Size(); i++ )
       if ( bcnames[i] ) delete bcnames[i];
+    for (int i= 0; i< cd2names.Size(); i++)
+      if (cd2names[i]) delete cd2names[i];
 
 #ifdef PARALLEL
     delete paralleltop;
@@ -313,6 +326,39 @@ namespace netgen
     return si;
   }
 
+  void Mesh :: SetSurfaceElement (SurfaceElementIndex sei, const Element2d & el)
+  {
+    int maxn = el[0];
+    for (int i = 1; i < el.GetNP(); i++)
+      if (el[i] > maxn) maxn = el[i];
+
+    maxn += 1-PointIndex::BASE;
+
+    if (maxn <= points.Size())
+      {
+        for (int i = 0; i < el.GetNP(); i++)
+          if (points[el[i]].Type() > SURFACEPOINT)
+            points[el[i]].SetType(SURFACEPOINT);
+      }
+
+    surfelements[sei] = el;
+    if (el.index > facedecoding.Size())
+      cerr << "has no facedecoding: fd.size = " << facedecoding.Size() << ", ind = " << el.index << endl;
+
+    // add lock-free to list ... slow, call RebuildSurfaceElementLists later
+    /*
+    surfelements[sei].next = facedecoding[el.index-1].firstelement;
+    auto & head = reinterpret_cast<atomic<SurfaceElementIndex>&> (facedecoding[el.index-1].firstelement);
+    while (!head.compare_exchange_weak (surfelements[sei].next, sei))
+      ;
+    */
+
+    /*
+    if (SurfaceArea().Valid())
+      SurfaceArea().Add (el);
+    */
+  }
+
 
   ElementIndex Mesh :: AddVolumeElement (const Element & el)
   { 
@@ -356,6 +402,19 @@ namespace netgen
     return ve;
   }
 
+  void Mesh :: SetVolumeElement (ElementIndex ei, const Element & el)
+  {
+    /*
+    int maxn = el[0];
+    for (int i = 1; i < el.GetNP(); i++)
+      if (el[i] > maxn) maxn = el[i];
+
+    maxn += 1-PointIndex::BASE;
+    */
+
+    volelements[ei]  = el;
+    volelements.Last().flags.illegal_valid = 0;
+  }
 
 
 
@@ -363,11 +422,16 @@ namespace netgen
 
   void Mesh :: Save (const string & filename) const
   {
+    ostream * outfile;
+    if (filename.find(".vol.gz")!=string::npos)
+      outfile = new ogzstream(filename.c_str());
+    else if (filename.find(".vol")!=string::npos)
+      outfile = new ofstream(filename.c_str());
+    else
+      outfile = new ogzstream((filename+".vol.gz").c_str());
 
-    ofstream outfile(filename.c_str());
-    // ogzstream outfile( (filename+".gz") .c_str());
-
-    Save(outfile);
+    Save(*outfile);
+    delete outfile;
   }
 
 
@@ -609,6 +673,17 @@ namespace netgen
         for ( i = 0; i < bcnames.Size(); i++ )
           outfile << i+1 << "\t" << GetBCName(i) << endl;
         outfile << endl << endl;
+      }
+    int cntcd2names = 0;
+    for (int ii = 0; ii<cd2names.Size(); ii++)
+      if(cd2names[ii]) cntcd2names++;
+
+    if(cntcd2names)
+      {
+	outfile << "\n\ncd2names" << endl << cd2names.Size() << endl;
+	for (i=0; i<cd2names.Size(); i++)
+	  outfile << i+1 << "\t" << GetCD2Name(i) << endl;
+	outfile << endl << endl;
       }
 
     /*
@@ -903,7 +978,7 @@ namespace netgen
             PrintMessage (3, n, " volume elements");
             for (i = 1; i <= n; i++)
               {
-                Element el;
+                Element el(TET);
                 int hi, nep;
                 infile >> hi;
                 if (hi == 0) hi = 1;
@@ -1075,9 +1150,35 @@ namespace netgen
                   }
 
               }
-
-
           }
+
+	if ( strcmp (str, "cd2names" ) == 0)
+	  {
+	    infile >> n;
+	    Array<int,0> cd2nrs(n);
+	    SetNCD2Names(n);
+	    for( i=1; i<=n; i++)
+	      {
+		string nextcd2name;
+		infile >> cd2nrs[i-1] >> nextcd2name;
+		cd2names[cd2nrs[i-1]-1] = new string(nextcd2name);
+	      }
+	    if (GetDimension() == 2)
+	      {
+		throw NgException("co dim 2 elements not implemented for dimension 2");
+	      }
+	    else
+	      {
+		for (i = 1; i<= GetNSeg(); i++)
+		  {
+		    Segment & seg = LineSegment(i);
+		    if ( seg.cd2i <= n )
+		      seg.SetBCName (cd2names[seg.edgenr-1]);
+		    else
+		      seg.SetBCName(0);
+		  }
+	      }
+	  }
 
         if (strcmp (str, "singular_points") == 0)
           {
@@ -1193,7 +1294,7 @@ namespace netgen
  
     if (ntasks == 1) // sequential run only
       {
-	topology -> Update();
+	topology.Update();
 	clusters -> Update();
       }
 
@@ -1359,7 +1460,9 @@ namespace netgen
                 if(seg.surfnr2 >= 0)  seg.surfnr2 = seg.surfnr2 + max_surfnr;
                 seg[0] = seg[0] +oldnp;
                 seg[1] = seg[1] +oldnp;
+		*testout << "old edgenr: " << seg.edgenr << endl;
                 seg.edgenr = seg.edgenr + oldne;
+		*testout << "new edgenr: " << seg.edgenr << endl;
                 seg.epgeominfo[1].edgenr = seg.epgeominfo[1].edgenr + oldne;
 
                 AddSegment (seg);
@@ -1372,7 +1475,7 @@ namespace netgen
             PrintMessage (3, n, " volume elements");
             for (i = 1; i <= n; i++)
               {
-                Element el;
+                Element el(TET);
                 int hi, nep;
                 infile >> hi;
                 if (hi == 0) hi = 1;
@@ -1431,7 +1534,7 @@ namespace netgen
 
     CalcSurfacesOfNode ();
 
-    topology -> Update();
+    topology.Update();
     clusters -> Update();
 
     SetNextMajorTimeStamp();
@@ -1508,7 +1611,7 @@ namespace netgen
               }
           }
         else 
-          cerr << "illegal elemenet for buildboundaryedges" << endl;
+          cerr << "illegal element for buildboundaryedges" << endl;
       }
 
 
@@ -1542,12 +1645,14 @@ namespace netgen
 
   void Mesh :: CalcSurfacesOfNode ()
   {
-    surfacesonnode.SetSize (GetNP());
+    // surfacesonnode.SetSize (GetNP());
+    TABLE<int,PointIndex::BASE> surfacesonnode(GetNP());
 
     delete boundaryedges;
     boundaryedges = NULL;
 
     delete surfelementht;
+    surfelementht = nullptr;
     delete segmentht;
 
     /*
@@ -1555,9 +1660,11 @@ namespace netgen
       segmentht = new INDEX_2_HASHTABLE<int> (GetNSeg() + 1);
     */
 
-    surfelementht = new INDEX_3_CLOSED_HASHTABLE<int> (3*GetNSE() + 1);
+    if (dimension == 3)
+      surfelementht = new INDEX_3_CLOSED_HASHTABLE<int> (3*GetNSE() + 1);
     segmentht = new INDEX_2_CLOSED_HASHTABLE<int> (3*GetNSeg() + 1);
 
+    if (dimension == 3)
     for (SurfaceElementIndex sei = 0; sei < GetNSE(); sei++)
       {
         const Element2d & sel = surfelements[sei];
@@ -1568,6 +1675,9 @@ namespace netgen
         for (int j = 0; j < sel.GetNP(); j++)
           {
             PointIndex pi = sel[j];
+            if (!surfacesonnode[pi].Contains(si))
+              surfacesonnode.Add (pi, si);
+            /*
             bool found = 0;
             for (int k = 0; k < surfacesonnode[pi].Size(); k++)
               if (surfacesonnode[pi][k] == si)
@@ -1578,6 +1688,7 @@ namespace netgen
 
             if (!found)
               surfacesonnode.Add (pi, si);
+            */
           }
       }
     /*
@@ -1596,6 +1707,8 @@ namespace netgen
 
       surfelementht -> AllocateElements();
     */
+
+    if (dimension==3)
     for (SurfaceElementIndex sei = 0; sei < GetNSE(); sei++)
       {
         const Element2d & sel = surfelements[sei];
@@ -1840,7 +1953,7 @@ namespace netgen
     int ii;
     PointIndex pi;
     SurfaceElementIndex sei;
-    Element2d hel;
+    // Element2d hel;
 
 
     INDEX_3_CLOSED_HASHTABLE<INDEX_2> faceht(100);   
@@ -1854,7 +1967,7 @@ namespace netgen
           FlatArray<SurfaceElementIndex> row = selsonpoint[pi];
           for (ii = 0; ii < row.Size(); ii++)
             {
-              hel = SurfaceElement(row[ii]);
+              Element2d hel = SurfaceElement(row[ii]);
               if (hel.GetType() == TRIG6) hel.SetType(TRIG);
               int ind = hel.GetIndex();	  
 
@@ -1899,6 +2012,7 @@ namespace netgen
                 {
                   for (int j = 1; j <= el.GetNFaces(); j++)
                     {
+                      Element2d hel(TRIG);
                       el.GetFace (j, hel);
                       hel.Invert();
                       hel.NormalizeNumbering();
@@ -1953,8 +2067,9 @@ namespace netgen
                 faceht.GetData (i, i3, i2);
                 if (i2.I1() != PointIndex::BASE-1)
                   {
-                    Element2d tri;
-                    tri.SetType ( (i2.I2() == PointIndex::BASE-1) ? TRIG : QUAD);
+                    // Element2d tri;
+                    // tri.SetType ( (i2.I2() == PointIndex::BASE-1) ? TRIG : QUAD);
+                    Element2d tri ( (i2.I2() == PointIndex::BASE-1) ? TRIG : QUAD);
                     for (int l = 0; l < 3; l++)
                       tri[l] = i3.I(l+1);
                     tri.PNum(4) = i2.I2();
@@ -2098,7 +2213,7 @@ namespace netgen
                 INDEX_2 seg (el.PNumMod(j), el.PNumMod(j+1));
                 INDEX_2 data;
 
-                if (seg.I1() <= 0 || seg.I2() <= 0)
+                if (seg.I1() < PointIndex::BASE || seg.I2() < PointIndex::BASE)
                   cerr << "seg = " << seg << endl;
 
                 if (faceht.Used(seg))
@@ -2305,34 +2420,33 @@ namespace netgen
 
   void Mesh :: RemoveOneLayerSurfaceElements ()
   {
-    int i, j;
     int np = GetNP();
 
     FindOpenSegments();
-    BitArray frontpoints(np);
-
+    BitArray frontpoints(np+1);  // for 0- and 1-based
     frontpoints.Clear();
-    for (i = 1; i <= GetNOpenSegments(); i++)
+    
+    for (int i = 1; i <= GetNOpenSegments(); i++)
       {
         const Segment & seg = GetOpenSegment(i);
         frontpoints.Set (seg[0]);
         frontpoints.Set (seg[1]);
       }
 
-    for (i = 1; i <= GetNSE(); i++)
+    for (int i = 1; i <= GetNSE(); i++)
       {
         Element2d & sel = surfelements.Elem(i);
-        int remove = 0;
-        for (j = 1; j <= sel.GetNP(); j++)
+        bool remove = false;
+        for (int j = 1; j <= sel.GetNP(); j++)
           if (frontpoints.Test(sel.PNum(j)))
-            remove = 1;
+            remove = true;
         if (remove)
-          sel.PNum(1) = 0;
+          sel.PNum(1).Invalidate();
       }
 
-    for (i = surfelements.Size(); i >= 1; i--)
+    for (int i = surfelements.Size(); i >= 1; i--)
       {
-        if (surfelements.Elem(i).PNum(1) == 0)
+        if (!surfelements.Elem(i).PNum(1).IsValid())
           {
             surfelements.Elem(i) = surfelements.Last();
             surfelements.DeleteLast();
@@ -3131,6 +3245,10 @@ namespace netgen
           i--;
         }
 
+    for(int i=0; i < segments.Size(); i++)
+      if(segments[i].edgenr < 0)
+          segments.Delete(i--);
+
     pused.Clear();
     for (int i = 0; i < volelements.Size(); i++)
       {
@@ -3165,7 +3283,7 @@ namespace netgen
 
 
     /*
-    // compress points doesnt work for identified points !
+    // compress points doesn't work for identified points !
     if (identifiedpoints)
     {
     for (i = 1; i <= identifiedpoints->GetNBags(); i++)
@@ -3359,7 +3477,7 @@ namespace netgen
 
     Point3d pmin, pmax;
     GetBox (pmin, pmax);
-    Box3dTree setree(pmin, pmax);
+    BoxTree<3> setree(pmin, pmax);
     Array<int> inters;
 
     bool overlap = 0;
@@ -3615,11 +3733,11 @@ namespace netgen
         {
           bool sege = false, be = false;
 
-          int pos = boundaryedges -> Position(INDEX_2::Sort(el[i], el[j]));
-          if (pos)
+          int pos = boundaryedges -> Position0(INDEX_2::Sort(el[i], el[j]));
+          if (pos != -1)
             {
               be = true;
-              if (boundaryedges -> GetData(pos) == 2)
+              if (boundaryedges -> GetData0(pos) == 2)
                 sege = true;
             }
 
@@ -4177,7 +4295,7 @@ namespace netgen
                     box.Add (points[surfelements[sei].PNums()]);
                   
                   box.Increase (1.01 * box.Diam());
-                  elementsearchtree = new Box3dTree (box);
+                  elementsearchtree = new BoxTree<3> (box);
                   
                   for (SurfaceElementIndex sei = 0; sei < ne; sei++)
                     {
@@ -4192,7 +4310,7 @@ namespace netgen
                     box.Add (points[volelements[ei].PNums()]);
                   
                   box.Increase (1.01 * box.Diam());
-                  elementsearchtree = new Box3dTree (box);
+                  elementsearchtree = new BoxTree<3> (box);
                   
                   for (ElementIndex ei = 0; ei < ne; ei++)
                     {
@@ -4246,11 +4364,10 @@ namespace netgen
 
     Array<Element2d> loctrigs;
 
-
+    
     //SZ 
     if(SurfaceElement(element).GetType()==QUAD)
       {
-        // cout << "check quad element" << endl;
         const Element2d & el = SurfaceElement(element); 
 
         const Point3d & p1 = Point(el.PNum(1)); 
@@ -4263,26 +4380,37 @@ namespace netgen
         Vec3d a = p1; 
         Vec3d b = p2 - a; 
         Vec3d c = p4 - a; 
-        Vec3d d = p3 - a - b - c; 
+        Vec3d d = p3 - a - b - c;
 
+     
         double dxb = d.X()*b.Y()-d.Y()*b.X();
         double dxc = d.X()*c.Y()-d.Y()*c.X(); 
         double dxa = d.X()*a.Y()-d.Y()*a.X(); 
-        double dxp = d.X()*p.Y()-d.Y()*p.X(); 
-
+        double dxp = d.X()*p.Y()-d.Y()*p.X();
+	
+	
         double c0,c1,c2; // ,rt; 
         lami[2]=0.; 
-        double eps = 1.E-12; 
+        double eps = 1.E-12;
 
-        // if(fabs(d.X()) <= eps && fabs(d.Y())<= eps)
-        if (d.Length2() < sqr(eps))
+	Vec3d dp13 = p3-p1;
+	Vec3d dp24 = p4-p2;
+	double d1 = dp13.Length2();
+	double d2 = dp24.Length2();
+
+	// if(fabs(d.X()) <= eps && fabs(d.Y())<= eps)
+	//if (d.Length2() < sqr(eps))
+        if (d.Length2() < sqr(eps)*d1 && d.Length2() < sqr(eps)*d2)
           {
-            //Solve Linear System
-
-            Vec2d sol;
+	    //Solve Linear System
+	    Vec2d sol;
             SolveLinearSystemLS (b, c, p-a, sol);
             lami[0] = sol.X();
             lami[1] = sol.Y();
+
+	    if(lami[1]<=1.+eps && lami[1]>=0.-eps && lami[0]<=1.+eps && lami[0]>=0.-eps)
+	      return true;
+	    
             /*
             lami[0]=(c.Y()*(p.X()-a.X())-c.X()*(p.Y()-a.Y()))/
               (b.X()*c.Y() -b.Y()*c.X()); 
@@ -4291,54 +4419,103 @@ namespace netgen
             */
           } 
         else
-          if(fabs(dxb) <= eps) 
+          if(fabs(dxb) <= eps*fabs(dxc))
             {
-              lami[1] = (dxp-dxa)/dxc;
-              if(fabs(b.X()-d.X()*lami[1])>=eps)
+	      lami[1] = (dxp-dxa)/dxc;
+              if(fabs(b.X()+d.X()*lami[1])>=fabs(b.Y()+d.Y()*lami[1]))
                 lami[0] = (p.X()-a.X() - c.X()*lami[1])/(b.X()+d.X()*lami[1]); 
               else
-                lami[0] = (p.Y()-a.Y() - c.Y()*lami[1])/(b.Y()+d.Y()*lami[1]); 
+                lami[0] = (p.Y()-a.Y() - c.Y()*lami[1])/(b.Y()+d.Y()*lami[1]);
+
+	      if(lami[1]<=1.+eps && lami[1]>=0.-eps && lami[0]<=1.+eps && lami[0]>=0.-eps)
+		return true;
             }
           else
-            if(fabs(dxc) <= eps)
+            if(fabs(dxc) <= eps*fabs(dxb))
               {
-                lami[0] = (dxp-dxa)/dxb;
-                if(fabs(c.X()-d.X()*lami[0])>=eps)
+		lami[0] = (dxp-dxa)/dxb;
+                if(fabs(c.X()+d.X()*lami[0])>=fabs(c.Y()+d.Y()*lami[0]))
                   lami[1] = (p.X()-a.X() - b.X()*lami[0])/(c.X()+d.X()*lami[0]); 
                 else
-                  lami[1] = (p.Y()-a.Y() - b.Y()*lami[0])/(c.Y()+d.Y()*lami[0]); 
+                  lami[1] = (p.Y()-a.Y() - b.Y()*lami[0])/(c.Y()+d.Y()*lami[0]);
+
+		if(lami[1]<=1.+eps && lami[1]>=0.-eps && lami[0]<=1.+eps && lami[0]>=0.-eps)
+		  return true;
               }
             else //Solve quadratic equation
               {
-                if(fabs(d.X()) >= eps)
-                  {
-                    c2 = d.X()*dxc;
-                    c1 = d.X()*dxc - c.X()*dxb - d.X()*(dxp-dxa);
-                    c0 = -b.X()*(dxp -dxa) - (a.X()-p.X())*dxb;
-                  }
-                else 
-                  {
-                    c2 = d.Y()*dxc;
-                    c1 = d.Y()*dxc - c.Y()*dxb - d.Y()*(dxp-dxa);
-                    c0 = -b.Y()*(dxp -dxa) - (a.Y()-p.Y())*dxb;
-                  }
+		c2 = -d.X()*dxb;
+		c1 = b.X()*dxc - c.X()*dxb + d.X()*(dxp-dxa);
+		c0 = c.X()*(dxp-dxa) + (a.X()-p.X())*dxc;
+		double rt =  c1*c1 - 4*c2*c0;
+		
+		if (rt < 0.) return false; 
+		lami[1] = (-c1 + sqrt(rt))/2/c2;
 
-                double rt =  c1*c1 - 4*c2*c0;
-                if (rt < 0.) return false; 
-                lami[1] = (-c1 + sqrt(rt))/2/c2;
-                if(lami[1]<=1. && lami[1]>=0.)
-                  {
-                    lami[0] = (dxp - dxa -dxc*lami[1])/dxb;
-                    if(lami[0]<=1. && lami[0]>=0.)
-                      return true;
-                  }
 
-                lami[1] = (-c1 - sqrt(rt))/2/c2;
-                lami[0] = (dxp - dxa -dxc*lami[1])/dxb;
-              }
-        // cout << "lam0,1 = " << lami[0] << ", " << lami[1] << endl;
+		if(lami[1]<=1.+eps && lami[1]>=0.-eps)
+		  {
+		    lami[0] = (dxp - dxa -dxb*lami[1])/dxc;
+		    
+		    if(lami[0]<=1.+eps && lami[0]>=0.-eps)
+		      return true;
+		  }
+		lami[1] = (-c1 - sqrt(rt))/2/c2;
+
+		lami[0] = (dxp - dxa -dxb*lami[1])/dxc;
+
+		if(lami[1]<=1.+eps && lami[1]>=0.-eps && lami[0]<=1.+eps && lami[0]>=0.-eps)
+		  return true;
+
+		c2 = d.Y()*dxb;
+		c1 = b.Y()*dxc - c.Y()*dxb + d.Y()*(dxp-dxa);
+		c0 = c.Y()*(dxp -dxa) + (a.Y()-p.Y())*dxc;
+		rt =  c1*c1 - 4*c2*c0;
+		
+		if (rt < 0.) return false; 
+		lami[1] = (-c1 + sqrt(rt))/2/c2;
+
+		if(lami[1]<=1.+eps && lami[1]>=0.-eps)
+		  {
+		    lami[0] = (dxp - dxa -dxb*lami[1])/dxc;
+
+		    if(lami[0]<=1.+eps && lami[0]>=0.-eps)
+		      return true;
+		  }
+		lami[1] = (-c1 - sqrt(rt))/2/c2;
+
+		lami[0] = (dxp - dxa -dxb*lami[1])/dxc;
+
+		if(lami[1]<=1.+eps && lami[1]>=0.-eps && lami[0]<=1.+eps && lami[0]>=0.-eps)
+		  return true;
+
+		c2 = -d.X()*dxc;
+		c1 = -b.X()*dxc + c.X()*dxb + d.X()*(dxp-dxa);
+		c0 = b.X()*(dxp -dxa) + (a.X()-p.X())*dxb;
+		rt =  c1*c1 - 4*c2*c0;
+		
+		if (rt < 0.) return false; 
+		lami[1] = (-c1 + sqrt(rt))/2/c2;
+
+		if(lami[1]<=1.+eps && lami[1]>=0.-eps)
+		  {
+		    lami[0] = (dxp - dxa -dxc*lami[1])/dxb;
+
+		    if(lami[0]<=1.+eps && lami[0]>=0.-eps)
+		      return true;
+		  }
+		lami[1] = (-c1 - sqrt(rt))/2/c2;
+
+		lami[0] = (dxp - dxa -dxc*lami[1])/dxb;
+
+		if(lami[1]<=1.+eps && lami[1]>=0.-eps && lami[0]<=1.+eps && lami[0]>=0.-eps)
+		  return true;
+	      }
+
+      
+        //cout << "lam0,1 = " << lami[0] << ", " << lami[1] << endl;
         
-        if( lami[0] <= 1.+eps  && lami[0] >= -eps && lami[1]<=1.+eps && lami[1]>=-eps)
+        /*if( lami[0] <= 1.+eps  && lami[0] >= -eps && lami[1]<=1.+eps && lami[1]>=-eps)
           {
             if(consider3D)
               {
@@ -4351,7 +4528,7 @@ namespace netgen
               }
             else
               return true;
-          }
+	      }*/
 
         return false;
 
@@ -4612,6 +4789,9 @@ namespace netgen
                                  bool build_searchtree,
                                  const bool allowindex) const
   {
+    const double pointtol = 1e-12;
+    netgen::Point<3> pmin = p - Vec<3> (pointtol, pointtol, pointtol);
+    netgen::Point<3> pmax = p + Vec<3> (pointtol, pointtol, pointtol);
     if (dimension == 2)
       {
         int ne;
@@ -4625,7 +4805,7 @@ namespace netgen
           {
             // update if necessary:
             const_cast<Mesh&>(*this).BuildElementSearchTree (); 
-            elementsearchtree->GetIntersecting (p, p, locels);
+            elementsearchtree->GetIntersecting (pmin, pmax, locels);
             ne = locels.Size();
           }
         else
@@ -4668,7 +4848,7 @@ namespace netgen
           {
             // update if necessary:
             const_cast<Mesh&>(*this).BuildElementSearchTree (); 
-            elementsearchtree->GetIntersecting (p, p, locels);
+            elementsearchtree->GetIntersecting (pmin, pmax, locels);
             ne = locels.Size();
           }
         else
@@ -4767,12 +4947,12 @@ namespace netgen
         //(*testout) << "velement " << velement << endl;
 
         Array<int> faces;
-        topology->GetElementFaces(velement,faces);
+        topology.GetElementFaces(velement,faces);
 
         //(*testout) << "faces " << faces << endl;
 
         for(int i=0; i<faces.Size(); i++)
-          faces[i] = topology->GetFace2SurfaceElement(faces[i]);
+          faces[i] = topology.GetFace2SurfaceElement(faces[i]);
 
         //(*testout) << "surfel " << faces << endl;
 
@@ -4799,7 +4979,7 @@ namespace netgen
           }
 
         Array<int> faces2;
-        topology->GetElementFaces(velement,faces2);
+        topology.GetElementFaces(velement,faces2);
         /*
         cout << "no matching surf element" << endl
              << "p = " << p << endl
@@ -5239,7 +5419,7 @@ namespace netgen
         // angles in faces
         for (j = 1; j <= 4; j++)
           {
-            Element2d face;
+            Element2d face(TRIG);
             el.GetFace (j, face);
             for (lpi1 = 1; lpi1 <= 3; lpi1++)
               {
@@ -5298,30 +5478,9 @@ namespace netgen
   int Mesh :: MarkIllegalElements ()
   {
     int cnt = 0;
-    int i;
-
-    for (i = 1; i <= GetNE(); i++)
-      {
-        LegalTet (VolumeElement(i));
-
-        /*
-          Element & el = VolumeElement(i);
-          int leg1 = LegalTet (el);
-          el.flags.illegal_valid = 0;
-          int leg2 = LegalTet (el);
-
-          if (leg1 != leg2) 
-          {
-          cerr << "legal differs!!" << endl;
-          (*testout) << "legal differs" << endl;
-          (*testout) << "elnr = " << i << ", el = " << el
-          << " leg1 = " << leg1 << ", leg2 = " << leg2 << endl;
-          }
-
-          //      el.flags.illegal = !LegalTet (el);
-          */
-        cnt += VolumeElement(i).Illegal();
-      }
+    for (auto & el : VolumeElements())
+      if (!LegalTet (el))
+        cnt++;
     return cnt;
   }
 
@@ -5454,6 +5613,7 @@ namespace netgen
           if (el[j] > numvertices)
             numvertices = el[j];
       }
+    /*
     for (i = 1; i <= nse; i++)
       {
         const Element2d & el = SurfaceElement(i);
@@ -5462,6 +5622,10 @@ namespace netgen
           if (el.PNum(j) > numvertices)
             numvertices = el.PNum(j);
       } 
+    */
+    for (auto & el : SurfaceElements())
+      for (PointIndex v : el.Vertices())
+        if (v > numvertices) numvertices = v;
 
     numvertices += 1- PointIndex::BASE;
   }
@@ -5617,10 +5781,13 @@ namespace netgen
     return 1;
   }
 
-  void Mesh :: UpdateTopology (TaskManager tm)
+  void Mesh :: UpdateTopology (TaskManager tm,
+                               Tracer tracer)
   {
-    topology->Update(tm);
-    clusters->Update();
+    topology.Update(tm, tracer);
+    (*tracer)("call update clusters", false);
+    clusters->Update(tm, tracer);
+    (*tracer)("call update clusters", true);
 #ifdef PARALLEL
     if (paralleltop)
       {
@@ -5650,8 +5817,8 @@ namespace netgen
       {
         int olds = materials.Size();
         materials.SetSize (domnr);
-        for (int i = olds; i < domnr; i++)
-          materials[i] = 0;
+        for (int i = olds; i < domnr-1; i++)
+          materials[i] = new string("default");
       }
     /*
     materials.Elem(domnr) = new char[strlen(mat)+1];
@@ -5660,11 +5827,12 @@ namespace netgen
     materials.Elem(domnr) = new string(mat);
   }
 
+  string Mesh :: defaultmat = "default";
   const string & Mesh :: GetMaterial (int domnr) const
   {
     if (domnr <= materials.Size())
       return *materials.Get(domnr);
-    static string emptystring;
+    static string emptystring("default");
     return emptystring;
   }
 
@@ -5710,6 +5878,49 @@ namespace netgen
 
     if ( bcnames[bcnr] )
       return *bcnames[bcnr];
+    else
+      return defaultstring;
+  }
+
+  void Mesh :: SetNCD2Names( int ncd2n )
+  {
+    if (cd2names.Size())
+      for(int i=0; i<cd2names.Size(); i++)
+	if(cd2names[i]) delete cd2names[i];
+    cd2names.SetSize(ncd2n);
+    cd2names = 0;
+  }
+
+  void Mesh :: SetCD2Name ( int cd2nr, const string & abcname )
+  {
+    cd2nr--;
+    (*testout) << "setCD2Name on edge " << cd2nr << " to " << abcname << endl;
+    if (cd2nr >= cd2names.Size())
+      {
+	int oldsize = cd2names.Size();
+	cd2names.SetSize(cd2nr+1);
+	for(int i= oldsize; i<= cd2nr; i++)
+	  cd2names[i] = nullptr;
+      }
+    //if (cd2names[cd2nr]) delete cd2names[cd2nr];
+    if (abcname != "default")
+      cd2names[cd2nr] = new string(abcname);
+    else
+      cd2names[cd2nr] = nullptr;
+  }
+
+  string Mesh :: cd2_default_name = "default";
+  const string & Mesh :: GetCD2Name (int cd2nr) const
+  {
+    static string defaultstring  = "default";
+    if (!cd2names.Size())
+      return defaultstring;
+
+    if (cd2nr < 0 || cd2nr >= cd2names.Size())
+      return defaultstring;
+
+    if (cd2names[cd2nr])
+      return *cd2names[cd2nr];
     else
       return defaultstring;
   }
@@ -5783,8 +5994,8 @@ namespace netgen
         << sizeof (Element) << " = " 
         << GetNE() * sizeof(Element) << endl;
 
-    ost << "surfs on node:";
-    surfacesonnode.PrintMemInfo (cout);
+    // ost << "surfs on node:";
+    // surfacesonnode.PrintMemInfo (cout);
 
     ost << "boundaryedges: ";
     if (boundaryedges)

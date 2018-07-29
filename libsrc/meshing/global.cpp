@@ -4,6 +4,15 @@
 
 namespace netgen
 {
+
+  class TraceGlobal
+  {
+    string name;
+  public:
+    TraceGlobal(string _name) : name(_name) { cout << "init global " << name << endl; }
+    ~TraceGlobal() { cout << "exit global " << name << endl; }
+  };
+  
   // stringstream emptystr;
   // ostream * testout = &emptystr;
   // testout -> clear(ios::failbit);
@@ -16,9 +25,11 @@ namespace netgen
   ostream * mycout = &cout;
   ostream * myerr = &cerr;
 
-  // some functions (visualization) still need a global mesh 
+  // some functions (visualization) still need a global mesh
+  // TraceGlobal glob1("global1");
   DLL_HEADER shared_ptr<Mesh> mesh;
   DLL_HEADER shared_ptr<NetgenGeometry> ng_geometry;
+  // TraceGlobal glob2("global2");
 
   weak_ptr<Mesh> global_mesh;
   void SetGlobalMesh (shared_ptr<Mesh> m)
@@ -27,7 +38,9 @@ namespace netgen
     global_mesh = m;
   }
   
-
+  // true if netgen was started using the netgen executable
+  // false if netgen.gui was imported from python
+  DLL_HEADER bool netgen_executable_started = false;
   
   //  Flags parameters;
   int silentflag = 0;
@@ -88,7 +101,8 @@ namespace netgen
   DebugParameters debugparam;
   bool verbose = 0;
 
-  int timestamp = 0;
+  size_t timestamp = 0;
+  /*
   int GetTimeStamp() 
   { 
     return timestamp; 
@@ -99,4 +113,5 @@ namespace netgen
     timestamp++;
     return timestamp;
   }
+  */
 }

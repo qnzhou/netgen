@@ -58,10 +58,11 @@ namespace netgen
 
 bool WriteUserFormat (const string & format,
 		      const Mesh & mesh,
-		      const NetgenGeometry & hgeom,
 		      const string & filename)
 {
-  const CSGeometry & geom = *dynamic_cast<const CSGeometry*> (&hgeom);
+  // cout << "write user &hgeom = " << &hgeom << endl;
+  // const CSGeometry & geom = *dynamic_cast<const CSGeometry*> (&hgeom);
+  const CSGeometry & geom = *dynamic_pointer_cast<CSGeometry> (mesh.GetGeometry());  
 
   PrintMessage (1, "Export mesh to file ", filename,
 		", format is ", format);
@@ -238,19 +239,31 @@ void WriteNeutralFormat (const Mesh & mesh,
   if (mesh.GetDimension() == 2)
     {
       outfile << nseg << "\n";
-      for (i = 1; i <= nseg; i++)
+      for (int i = 1; i <= nseg; i++)
 	{
 	  const Segment & seg = mesh.LineSegment(i);
 	  outfile.width(4);
 	  outfile << seg.si << "    ";
 
+          for (int j = 0; j < seg.GetNP(); j++)
+            {
+              outfile << " ";
+              outfile.width(8);
+              outfile << seg[j];
+            }
+          /*
 	  outfile << " ";
 	  outfile.width(8);
 	  outfile << seg[0];
 	  outfile << " ";
 	  outfile.width(8);
 	  outfile << seg[1];
-
+          if (seg[2] != -1)
+            {
+              outfile.width(8);
+              outfile << seg[2];
+            }
+          */
 	  outfile << "\n";
 	}
     }

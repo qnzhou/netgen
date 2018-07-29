@@ -25,11 +25,14 @@ namespace netgen
     const char * savetask = multithread.task;
     multithread.task = "Find points";
 
+    mesh.pointelements.SetSize(0);
     for (int i = 0; i < geom.GetNUserPoints(); i++)
       {
-	mesh.AddPoint(geom.GetUserPoint (i));
+        auto up = geom.GetUserPoint(i);
+	auto pnum = mesh.AddPoint(up);
 	mesh.Points().Last().Singularity (geom.GetUserPointRefFactor(i));
 	mesh.AddLockedPoint (PointIndex (i+1));
+        mesh.pointelements.Append (Element0d(pnum, up.GetIndex()));
       }
 
     SpecialPointCalculation spc;
@@ -98,6 +101,12 @@ namespace netgen
 	//(*testout) << " to " << mesh.LineSegment(i).si << endl;
       }
 
+    for(int k = 1; k<=mesh.GetNFD(); k++)
+      {
+	*testout << "face: " << k << endl
+		 << "FD: " << mesh.GetFaceDescriptor(k) << endl;
+      }
+
     if (geom.identifications.Size())
       {
 	PrintMessage (3, "Find Identifications");
@@ -118,7 +127,7 @@ namespace netgen
     
     Point3d pmin, pmax;
     mesh.GetBox (pmin, pmax);
-    Box3dTree segtree (pmin, pmax);
+    BoxTree<3> segtree (pmin, pmax);
     
     for (SegmentIndex si = 0; si < mesh.GetNSeg(); si++)
       {
@@ -338,7 +347,6 @@ namespace netgen
 	FaceDescriptor & fd = mesh.GetFaceDescriptor(k);
 	fd.SetBCName ( mesh.GetBCNamePtr ( fd.BCProperty() - 1 ) );
       }
-    
 
     //!!
     
@@ -653,17 +661,16 @@ namespace netgen
 
 
   int CSGGenerateMesh (CSGeometry & geom, 
-		       shared_ptr<Mesh> & mesh, MeshingParameters & mparam,
-		       int perfstepsstart, int perfstepsend)
+		       shared_ptr<Mesh> & mesh, MeshingParameters & mparam)
   {
     if (mesh && mesh->GetNSE() &&
 	!geom.GetNSolids())
       {
-	if (perfstepsstart < MESHCONST_MESHVOLUME)
-	  perfstepsstart = MESHCONST_MESHVOLUME;
+	if (mparam.perfstepsstart < MESHCONST_MESHVOLUME)
+	  mparam.perfstepsstart = MESHCONST_MESHVOLUME;
       }
 
-    if (perfstepsstart <= MESHCONST_ANALYSE)
+    if (mparam.perfstepsstart <= MESHCONST_ANALYSE)
       {
         if (mesh)
           mesh -> DeleteMesh();
@@ -704,11 +711,11 @@ namespace netgen
       }
 
 
-    if (multithread.terminate || perfstepsend <= MESHCONST_ANALYSE) 
+    if (multithread.terminate || mparam.perfstepsend <= MESHCONST_ANALYSE) 
       return TCL_OK;
 
 
-    if (perfstepsstart <= MESHCONST_MESHEDGES)
+    if (mparam.perfstepsstart <= MESHCONST_MESHEDGES)
       {
 	FindEdges (geom, *mesh, mparam, true);
 	if (multithread.terminate) return TCL_OK;
@@ -741,11 +748,11 @@ namespace netgen
 	  }
       }
   
-    if (multithread.terminate || perfstepsend <= MESHCONST_MESHEDGES)
+    if (multithread.terminate || mparam.perfstepsend <= MESHCONST_MESHEDGES)
       return TCL_OK;
 
 
-    if (perfstepsstart <= MESHCONST_MESHSURFACE)
+    if (mparam.perfstepsstart <= MESHCONST_MESHSURFACE)
       {
 	MeshSurface (geom, *mesh, mparam);  
 	if (multithread.terminate) return TCL_OK;
@@ -755,8 +762,9 @@ namespace netgen
 		  << "time = " << GetTime() << " sec" << endl
 		  << "points: " << mesh->GetNP() << endl;
 #endif      
-      
-	if (mparam.uselocalh && 0)
+
+        /*
+	if (mparam.uselocalh)
 	  {
 	    mesh->CalcLocalH(mparam.grading);      
 	    mesh->DeleteMesh();
@@ -769,6 +777,7 @@ namespace netgen
 	    MeshSurface (geom, *mesh, mparam);  
 	    if (multithread.terminate) return TCL_OK;
 	  }
+        */
 
 #ifdef LOG_STREAM      
 	(*logout) << "Surfaces remeshed" << endl
@@ -786,11 +795,11 @@ namespace netgen
 	mesh->CalcSurfacesOfNode();
       }
   
-    if (multithread.terminate || perfstepsend <= MESHCONST_OPTSURFACE)
+    if (multithread.terminate || mparam.perfstepsend <= MESHCONST_OPTSURFACE)
       return TCL_OK;
 
 
-    if (perfstepsstart <= MESHCONST_MESHVOLUME)
+    if (mparam.perfstepsstart <= MESHCONST_MESHVOLUME)
       {
 	multithread.task = "Volume meshing";
 
@@ -821,11 +830,11 @@ namespace netgen
 #endif
       }
 
-    if (multithread.terminate || perfstepsend <= MESHCONST_MESHVOLUME)
+    if (multithread.terminate || mparam.perfstepsend <= MESHCONST_MESHVOLUME)
       return TCL_OK;
 
 
-    if (perfstepsstart <= MESHCONST_OPTVOLUME)
+    if (mparam.perfstepsstart <= MESHCONST_OPTVOLUME)
       {
 	multithread.task = "Volume optimization";
       

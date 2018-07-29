@@ -1,23 +1,17 @@
-from os import environ
-from sys import path
-from sys import platform as __platform
-if __platform.startswith('linux'):
-    path.append(environ['NETGENDIR']+'/../lib')
-if __platform.startswith('win'):
-    path.append(environ['NETGENDIR'])
-if __platform.startswith('darwin'):
-    path.append(environ['NETGENDIR'])
+import os
+import sys
 
- 
-# from libngpy import *
-import libngpy
-# from libngpy import *
+# import tkinter only if Netgen was configured with USE_GUI=ON
+if @IMPORT_TKINTER@:
+    import tkinter
 
-# import libngpy 
+_netgen_bin_dir=os.path.realpath(os.path.join(os.path.dirname(__file__),'..','@NETGEN_PYTHON_RPATH_BIN@'))
+_netgen_lib_dir=os.path.realpath(os.path.join(os.path.dirname(__file__),'..','@NETGEN_PYTHON_RPATH@'))
 
-# from . import csg
-# from . import meshing
-# from . import geom2d
+if sys.platform.startswith('win'):
+    os.environ['PATH'] += ';'+os.path.realpath(os.path.join(os.path.dirname(__file__),'../../../bin'))
 
-del environ
-del path
+del sys
+del os
+
+from . import libngpy

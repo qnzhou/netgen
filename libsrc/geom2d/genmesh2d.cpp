@@ -30,7 +30,7 @@ namespace netgen
       }
 
     // limit slope
-    double gradh = 1/elto0;
+    double gradh = min(1/elto0,mp.grading);
     for (int i = 0; i < n-1; i++)
       {
 	double hnext = hi[i] + gradh * (xi[i+1]-xi[i]).Length();
@@ -238,6 +238,29 @@ namespace netgen
 	  }
       }
 
+    // first add all vertices (for compatible orientation on periodic bnds)
+    {
+      double diam2 = Dist2(pmin, pmax);
+      for (int i = 0; i < splines.Size(); i++)
+        for (int j : { 1, 2 })
+          {
+            Point<2> hnewp = (j == 1) ? splines[i]->StartPI() : splines[i]->EndPI();
+            Point<3> newp(hnewp(0), hnewp(1), 0);
+            int layer = GetSpline(i).layer;
+            int npi = -1;
+            for (PointIndex pi = PointIndex::BASE; 
+                 pi < mesh2d.GetNP()+PointIndex::BASE; pi++)
+              if (Dist2 (mesh2d.Point(pi), newp) < 1e-12 * diam2 && mesh2d.Point(pi).GetLayer() == layer)
+                npi = pi;
+            
+	    if (npi == -1)
+	      {
+		npi = mesh2d.AddPoint (newp, layer);
+		searchtree.Insert (newp, npi);
+	      }
+          }
+    }
+    
     for (int i = 0; i < splines.Size(); i++)
       if (GetSpline(i).copyfrom == -1)
 	{
@@ -393,7 +416,7 @@ namespace netgen
 		mpi = pi;
 		mindist = Dist2(gp3, (*mesh)[pi]);
 	      }
-	  (*mesh)[mpi].Singularity(1.);
+	  (*mesh)[mpi].Singularity(geometry.GetPoint(i).hpref);
 	}
 
 

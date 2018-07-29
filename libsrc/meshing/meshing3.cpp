@@ -109,7 +109,7 @@ static double CalcLocH (const Array<Point3d> & locpoints,
   sum = 0;
   weight = 0;
 
-  for (i = 1; i <= locfaces.Size(); i++)
+  for(int i = 1; i <= locfaces.Size(); i++)
     {
       pc.X() = pc.Y() = pc.Z() = 0;
       for (j = 1; j <= 3; j++)
@@ -176,18 +176,18 @@ GenerateMesh (Mesh & mesh, const MeshingParameters & mp)
   NgProfiler::RegionTimer reg (meshing3_timer);
 
 
-  Array<Point3d > locpoints;      // local points
-  Array<MiniElement2d> locfaces;     // local faces
-  Array<PointIndex> pindex;      // mapping from local to front point numbering
-  Array<int> allowpoint;         // point is allowd ?
-  Array<INDEX> findex;           // mapping from local to front face numbering
-  //INDEX_2_HASHTABLE<int> connectedpairs(100);  // connecgted pairs for prism meshing
+  Array<Point3d, PointIndex::BASE> locpoints;      // local points
+  Array<MiniElement2d> locfaces;                   // local faces
+  Array<PointIndex, PointIndex::BASE> pindex;      // mapping from local to front point numbering
+  Array<int, PointIndex::BASE> allowpoint;         // point is allowed ?
+  Array<INDEX> findex;                             // mapping from local to front face numbering
+  //INDEX_2_HASHTABLE<int> connectedpairs(100);    // connecgted pairs for prism meshing
 
-  Array<Point3d > plainpoints;       // points in reference coordinates
+  Array<Point3d, PointIndex::BASE> plainpoints;    // points in reference coordinates
   Array<int> delpoints, delfaces;   // points and lines to be deleted
   Array<Element> locelements;       // new generated elements
 
-  int i, j, oldnp, oldnf;
+  int j, oldnp, oldnf;
   int found;
   referencetransform trans;
   int rotind;
@@ -206,9 +206,9 @@ GenerateMesh (Mesh & mesh, const MeshingParameters & mp)
 
   
   // for star-shaped domain meshing
-  Array<MeshPoint> grouppoints;      
+  Array<MeshPoint, PointIndex::BASE> grouppoints;      
   Array<MiniElement2d> groupfaces;
-  Array<PointIndex> grouppindex;
+  Array<PointIndex, PointIndex::BASE> grouppindex;
   Array<INDEX> groupfindex;
   
   
@@ -269,9 +269,9 @@ GenerateMesh (Mesh & mesh, const MeshingParameters & mp)
 	}
 
       const MiniElement2d & bel = adfront->GetFace (baseelem);
-      const Point3d & p1 = adfront->GetPoint (bel.PNum(1));
-      const Point3d & p2 = adfront->GetPoint (bel.PNum(2));
-      const Point3d & p3 = adfront->GetPoint (bel.PNum(3));
+      const Point3d & p1 = adfront->GetPoint (bel[0]);
+      const Point3d & p2 = adfront->GetPoint (bel[1]);
+      const Point3d & p3 = adfront->GetPoint (bel[2]);
 
       // (*testout) << endl << "base = " << bel << endl;
 
@@ -302,9 +302,6 @@ GenerateMesh (Mesh & mesh, const MeshingParameters & mp)
 
       // (*testout) << "locfaces = " << endl << locfaces << endl;
 
-      int pi1 = pindex.Get(locfaces[0].PNum(1));
-      int pi2 = pindex.Get(locfaces[0].PNum(2));
-      int pi3 = pindex.Get(locfaces[0].PNum(3));
 
       //loktestmode = 1;
       testmode = loktestmode;  //changed 
@@ -316,6 +313,9 @@ GenerateMesh (Mesh & mesh, const MeshingParameters & mp)
       if (loktestmode)
 	{
 	  (*testout) << "baseel = " << baseelem << ", ind = " << findex.Get(1) << endl;
+          int pi1 = pindex[locfaces[0].PNum(1)];
+          int pi2 = pindex[locfaces[0].PNum(2)];
+          int pi3 = pindex[locfaces[0].PNum(3)];
 	  (*testout) << "pi = " << pi1 << ", " << pi2 << ", " << pi3 << endl;
 	}
 
@@ -344,7 +344,7 @@ GenerateMesh (Mesh & mesh, const MeshingParameters & mp)
 
       allowpoint.SetSize(locpoints.Size());
       if (uselocalh && stat.qualclass <= 3)
-	for (i = 1; i <= allowpoint.Size(); i++)
+	for(int i = 1; i <= allowpoint.Size(); i++)
 	  {
 	    allowpoint.Elem(i) =
 	      (mesh.GetH (locpoints.Get(i)) > 0.4 * hshould / mp.sloppy) ? 2 : 1;
@@ -369,7 +369,7 @@ GenerateMesh (Mesh & mesh, const MeshingParameters & mp)
 			       grouppindex, groupfindex);
 
 	  bool onlytri = 1;
-	  for (i = 0; i < groupfaces.Size(); i++)
+	  for (auto i : groupfaces.Range())
 	    if (groupfaces[i].GetNP() != 3) 
 	      onlytri = 0;
 	  
@@ -378,10 +378,10 @@ GenerateMesh (Mesh & mesh, const MeshingParameters & mp)
 	    {
 	      (*testout) << "inner point found" << endl;
 
-	      for (i = 1; i <= groupfaces.Size(); i++)
+	      for(int i = 1; i <= groupfaces.Size(); i++)
 		adfront -> DeleteFace (groupfindex.Get(i));
 	      
-	      for (i = 1; i <= groupfaces.Size(); i++)
+	      for(int i = 1; i <= groupfaces.Size(); i++)
 		for (j = 1; j <= locfaces.Size(); j++)
 		  if (findex.Get(j) == groupfindex.Get(i))
 		    delfaces.Append (j);
@@ -390,13 +390,13 @@ GenerateMesh (Mesh & mesh, const MeshingParameters & mp)
 	      delfaces.SetSize (0);
 	      
 	      INDEX npi;
-	      Element newel;
+	      Element newel(TET);
 	      
 	      npi = mesh.AddPoint (inp);
 	      newel.SetNP(4);
 	      newel.PNum(4) = npi;
 	      
-	      for (i = 1; i <= groupfaces.Size(); i++)
+	      for(int i = 1; i <= groupfaces.Size(); i++)
 		{
 		  for (j = 1; j <= 3; j++)
 		    {
@@ -417,14 +417,14 @@ GenerateMesh (Mesh & mesh, const MeshingParameters & mp)
       //      int optother = 0;
 
       /*
-      for (i = 1; i <= locfaces.Size(); i++)
+      for(int i = 1; i <= locfaces.Size(); i++)
 	{
 	  (*testout) << "Face " << i << ": ";
 	  for (j = 1; j <= locfaces.Get(i).GetNP(); j++)
 	    (*testout) << pindex.Get(locfaces.Get(i).PNum(j)) << " ";
 	  (*testout) << endl;
 	}
-      for (i = 1; i <= locpoints.Size(); i++)
+      for(int i = 1; i <= locpoints.Size(); i++)
 	{
 	  (*testout) << "p" << i 
 		     << ", gi = " << pindex.Get(i) 
@@ -441,31 +441,28 @@ GenerateMesh (Mesh & mesh, const MeshingParameters & mp)
 	{
 	  // set transformatino to reference coordinates
 
-	  if (locfaces.Get(1).GetNP() == 3)
+	  if (locfaces[0].GetNP() == 3)
 	    {
-	      trans.Set (locpoints.Get(locfaces.Get(1).PNumMod(1+rotind)),
-			 locpoints.Get(locfaces.Get(1).PNumMod(2+rotind)),
-			 locpoints.Get(locfaces.Get(1).PNumMod(3+rotind)), hshould);
+	      trans.Set (locpoints[locfaces[0].PNumMod(1+rotind)],
+			 locpoints[locfaces[0].PNumMod(2+rotind)],
+			 locpoints[locfaces[0].PNumMod(3+rotind)], hshould);
 	    }
 	  else
 	    {
-	      trans.Set (locpoints.Get(locfaces.Get(1).PNumMod(1+rotind)),
-			 locpoints.Get(locfaces.Get(1).PNumMod(2+rotind)),
-			 locpoints.Get(locfaces.Get(1).PNumMod(4+rotind)), hshould);
+	      trans.Set (locpoints[locfaces[0].PNumMod(1+rotind)],
+			 locpoints[locfaces[0].PNumMod(2+rotind)],
+			 locpoints[locfaces[0].PNumMod(4+rotind)], hshould);
 	    }
 
-	  trans.ToPlain (locpoints, plainpoints);
+	  // trans.ToPlain (locpoints, plainpoints);
 
-
-	  for (i = 1; i <= allowpoint.Size(); i++)
-	    {
-	      if (plainpoints.Get(i).Z() > 0)
-		{
-		  //if(loktestmode)
-		  //  (*testout) << "plainpoints.Get(i).Z() = " << plainpoints.Get(i).Z() << " > 0" << endl;
-		  allowpoint.Elem(i) = 0;
-		}
-	    }
+          plainpoints.SetSize (locpoints.Size());
+          for (auto i : locpoints.Range())
+            trans.ToPlain (locpoints[i], plainpoints[i]);
+          
+          for (auto i : allowpoint.Range())
+            if (plainpoints[i].Z() > 0)
+              allowpoint[i] = false;
 
 	  stat.cnttrials++;
 
@@ -473,7 +470,7 @@ GenerateMesh (Mesh & mesh, const MeshingParameters & mp)
 	  if (stat.cnttrials % 100 == 0)
 	    {
 	      (*testout) << "\n";
-	      for (i = 1; i <= canuse.Size(); i++)
+	      for(int i = 1; i <= canuse.Size(); i++)
 	      {
 		(*testout) << foundmap.Get(i) << "/" 
 			   << canuse.Get(i) << "/"
@@ -508,7 +505,7 @@ GenerateMesh (Mesh & mesh, const MeshingParameters & mp)
 	  if (found) stat.cntsucc++;
 
 	  locpoints.SetSize (plainpoints.Size());
-	  for (i = oldnp+1; i <= plainpoints.Size(); i++)
+	  for (int i = oldnp+1; i <= plainpoints.Size(); i++)
 	    trans.FromPlain (plainpoints.Elem(i), locpoints.Elem(i));
 	  
 
@@ -516,13 +513,13 @@ GenerateMesh (Mesh & mesh, const MeshingParameters & mp)
 	  // avoid meshing from large to small mesh-size
 	  if (uselocalh && found && stat.qualclass <= 3)
 	    {
-	      for (i = 1; i <= locelements.Size(); i++)
+	      for (int i = 1; i <= locelements.Size(); i++)
 		{
-		  Point3d pmin = locpoints.Get(locelements.Get(i).PNum(1));
+		  Point3d pmin = locpoints[locelements.Get(i).PNum(1)];
 		  Point3d pmax = pmin;
 		  for (j = 2; j <= 4; j++)
 		    {
-		      const Point3d & hp = locpoints.Get(locelements.Get(i).PNum(j));
+		      const Point3d & hp = locpoints[locelements.Get(i).PNum(j)];
 		      pmin.SetToMin (hp);
 		      pmax.SetToMax (hp);
 		    }
@@ -533,10 +530,10 @@ GenerateMesh (Mesh & mesh, const MeshingParameters & mp)
 	    }
 	  if (found)
 	    {
-	      for (i = 1; i <= locelements.Size(); i++)
-		for (j = 1; j <= 4; j++)
+	      for (int i = 1; i <= locelements.Size(); i++)
+		for (int j = 1; j <= 4; j++)
 		  {
-		    const Point3d & hp = locpoints.Get(locelements.Get(i).PNum(j));
+		    const Point3d & hp = locpoints[locelements.Get(i).PNum(j)];
 		    if (Dist (hp, pmid) > hinner)
 		      found = 0;
 		  }
@@ -568,7 +565,7 @@ GenerateMesh (Mesh & mesh, const MeshingParameters & mp)
 	      if (testmode)
 		{
 		  (*testout) << "found is active, 3" << endl;
-		  for (i = 1; i <= plainpoints.Size(); i++)
+		  for(int i = 1; i <= plainpoints.Size(); i++)
 		    {
 		      (*testout) << "p";
 		      if (i <= pindex.Size())
@@ -585,19 +582,19 @@ GenerateMesh (Mesh & mesh, const MeshingParameters & mp)
 	      minerr = err;
 	      
 	      tempnewpoints.SetSize (0);
-	      for (i = oldnp+1; i <= locpoints.Size(); i++)
+	      for(int i = oldnp+1; i <= locpoints.Size(); i++)
 		tempnewpoints.Append (locpoints.Get(i));
 	      
 	      tempnewfaces.SetSize (0);
-	      for (i = oldnf+1; i <= locfaces.Size(); i++)
+	      for(int i = oldnf+1; i <= locfaces.Size(); i++)
 		tempnewfaces.Append (locfaces.Get(i));
 	      
 	      tempdelfaces.SetSize (0);
-	      for (i = 1; i <= delfaces.Size(); i++)
+	      for(int i = 1; i <= delfaces.Size(); i++)
 		tempdelfaces.Append (delfaces.Get(i));
 	      
 	      templocelements.SetSize (0);
-	      for (i = 1; i <= locelements.Size(); i++)
+	      for(int i = 1; i <= locelements.Size(); i++)
 		templocelements.Append (locelements.Get(i));
 
 	      /*
@@ -627,20 +624,20 @@ GenerateMesh (Mesh & mesh, const MeshingParameters & mp)
 	    }
 	    */
 
-	  for (i = 1; i <= tempnewpoints.Size(); i++)
+	  for(int i = 1; i <= tempnewpoints.Size(); i++)
 	    locpoints.Append (tempnewpoints.Get(i));
-	  for (i = 1; i <= tempnewfaces.Size(); i++)
+	  for(int i = 1; i <= tempnewfaces.Size(); i++)
 	    locfaces.Append (tempnewfaces.Get(i));
-	  for (i = 1; i <= tempdelfaces.Size(); i++)
+	  for(int i = 1; i <= tempdelfaces.Size(); i++)
 	    delfaces.Append (tempdelfaces.Get(i));
-	  for (i = 1; i <= templocelements.Size(); i++)
+	  for(int i = 1; i <= templocelements.Size(); i++)
 	    locelements.Append (templocelements.Get(i));
 
 
 	  if (loktestmode)
 	    {
 	      (*testout) << "apply rule" << endl;
-	      for (i = 1; i <= locpoints.Size(); i++)
+	      for(int i = 1; i <= locpoints.Size(); i++)
 		{
 		  (*testout) << "p";
 		  if (i <= pindex.Size())
@@ -655,40 +652,40 @@ GenerateMesh (Mesh & mesh, const MeshingParameters & mp)
 
 	  pindex.SetSize(locpoints.Size());
 
-	  for (i = oldnp+1; i <= locpoints.Size(); i++)
+	  for (int i = oldnp+1; i <= locpoints.Size(); i++)
 	    {
 	      PointIndex globind = mesh.AddPoint (locpoints.Get(i));
 	      pindex.Elem(i) = adfront -> AddPoint (locpoints.Get(i), globind);
 	    }
 
-	  for (i = 1; i <= locelements.Size(); i++)
+	  for (int i = 1; i <= locelements.Size(); i++)
 	    {
 	      Point3d * hp1, * hp2, * hp3, * hp4;
-	      hp1 = &locpoints.Elem(locelements.Get(i).PNum(1));
-	      hp2 = &locpoints.Elem(locelements.Get(i).PNum(2));
-	      hp3 = &locpoints.Elem(locelements.Get(i).PNum(3));
-	      hp4 = &locpoints.Elem(locelements.Get(i).PNum(4));
+	      hp1 = &locpoints[locelements.Get(i).PNum(1)];
+	      hp2 = &locpoints[locelements.Get(i).PNum(2)];
+	      hp3 = &locpoints[locelements.Get(i).PNum(3)];
+	      hp4 = &locpoints[locelements.Get(i).PNum(4)];
 	      
 	      tetvol += (1.0 / 6.0) * ( Cross ( *hp2 - *hp1, *hp3 - *hp1) * (*hp4 - *hp1) );
 
 	      for (j = 1; j <= locelements.Get(i).NP(); j++)
 		locelements.Elem(i).PNum(j) =
-		  adfront -> GetGlobalIndex (pindex.Get(locelements.Get(i).PNum(j)));
+		  adfront -> GetGlobalIndex (pindex[locelements.Get(i).PNum(j)]);
 
 	      mesh.AddVolumeElement (locelements.Get(i));
 	      stat.cntelem++;
 	    }
 
-	  for (i = oldnf+1; i <= locfaces.Size(); i++)
+	  for(int i = oldnf+1; i <= locfaces.Size(); i++)
 	    {
 	      for (j = 1; j <= locfaces.Get(i).GetNP(); j++)
 		locfaces.Elem(i).PNum(j) = 
-		  pindex.Get(locfaces.Get(i).PNum(j));
+		  pindex[locfaces.Get(i).PNum(j)];
 	      // (*testout) << "add face " << locfaces.Get(i) << endl;
 	      adfront->AddFace (locfaces.Get(i));
 	    }
 	  
-	  for (i = 1; i <= delfaces.Size(); i++)
+	  for(int i = 1; i <= delfaces.Size(); i++)
 	    adfront->DeleteFace (findex.Get(delfaces.Get(i)));
 	}
       else
@@ -712,7 +709,7 @@ GenerateMesh (Mesh & mesh, const MeshingParameters & mp)
   
   PrintMessage (5, "");  // line feed after statistics
 
-  for (i = 1; i <= ruleused.Size(); i++)
+  for(int i = 1; i <= ruleused.Size(); i++)
     (*testout) << setw(4) << ruleused.Get(i)
 	       << " times used rule " << rules.Get(i) -> Name() << endl;
 
@@ -745,7 +742,7 @@ void Meshing3 :: BlockFill (Mesh & mesh, double gh)
   double xminb, xmaxb, yminb, ymaxb, zminb, zmaxb;
   //double rad = 0.7 * gh;
   
-  for (i = 1; i <= adfront->GetNP(); i++)
+  for(int i = 1; i <= adfront->GetNP(); i++)
     {
       const Point3d & p = adfront->GetPoint(PointIndex(i));
       if (i == 1)
@@ -783,13 +780,13 @@ void Meshing3 :: BlockFill (Mesh & mesh, double gh)
 
   // initialize inner to 1
 
-  for (i = 1; i <= n; i++)
+  for(int i = 1; i <= n; i++)
     inner.Elem(i) = BLOCKUNDEF;
 
 
   // set blocks cutting surfaces to 0
 
-  for (i = 1; i <= adfront->GetNF(); i++)
+  for(int i = 1; i <= adfront->GetNF(); i++)
     {
       const MiniElement2d & el = adfront->GetFace(i);
       xminb = xmax; xmaxb = xmin;
@@ -919,14 +916,14 @@ void Meshing3 :: BlockFill (Mesh & mesh, double gh)
 
 
   filled = 0;
-  for (i = 1; i <= n; i++)
+  for(int i = 1; i <= n; i++)
     if (inner.Elem(i) == BLOCKINNER)
       {
 	filled++;
       }
   PrintMessage (5, "Filled blocks: ", filled);
 
-  for (i = 1; i <= n; i++)
+  for(int i = 1; i <= n; i++)
     {
       pointnr.Elem(i) = 0;
       frontpointnr.Elem(i) = 0;

@@ -24,15 +24,16 @@ namespace netgen
   {
   public:
     typedef ::netgen::T_POINTS T_POINTS;
-    typedef Array<Element> T_VOLELEMENTS;
-    typedef Array<Element2d> T_SURFELEMENTS;
+    typedef Array<Element, 0, size_t> T_VOLELEMENTS;
+    // typedef Array<Element2d, 0, SurfaceElementIndex> T_SURFELEMENTS;
+    typedef Array<Element2d, 0, size_t> T_SURFELEMENTS;
 
   private:
     /// point coordinates
     T_POINTS points;
 
     /// line-segments at edges
-    Array<Segment> segments;
+    Array<Segment, 0, size_t> segments;
     /// surface elements, 2d-inner elements
     T_SURFELEMENTS surfelements;
     /// volume elements
@@ -42,7 +43,7 @@ namespace netgen
 
 
     /// surface indices at boundary nodes
-    TABLE<int,PointIndex::BASE> surfacesonnode;
+    // TABLE<int,PointIndex::BASE> surfacesonnode;
     /// boundary edges  (1..normal bedge, 2..segment)
     INDEX_2_CLOSED_HASHTABLE<int> * boundaryedges;
     ///
@@ -87,6 +88,9 @@ namespace netgen
     /// labels for boundary conditions
     Array<string*> bcnames;
 
+    /// labels for co dim 2 bboundary conditions
+    Array<string*> cd2names;
+
     /// Periodic surface, close surface, etc. identifications
     Identifications * ident;
 
@@ -95,12 +99,12 @@ namespace netgen
     int numvertices;
 
     /// geometric search tree for interval intersection search
-    Box3dTree * elementsearchtree;
+    BoxTree<3> * elementsearchtree;
     /// time stamp for tree
     mutable int elementsearchtreets;
 
     /// element -> face, element -> edge etc ...
-    MeshTopology * topology;
+    MeshTopology topology;
     /// methods for high order elements
     class CurvedElements * curvedelems;
 
@@ -167,7 +171,7 @@ namespace netgen
     /// number of refinement levels
     int mglevels;
     /// refinement hierarchy
-    Array<INDEX_2,PointIndex::BASE> mlbetweennodes;
+    Array<PointIndices<2>,PointIndex::BASE> mlbetweennodes;
     /// parent element of volume element
     Array<int> mlparentelement;
     /// parent element of surface element
@@ -189,32 +193,34 @@ namespace netgen
     void ClearSurfaceElements();
 
     ///
-	DLL_HEADER void ClearVolumeElements()
+    DLL_HEADER void ClearVolumeElements()
     {
       volelements.SetSize(0); 
       timestamp = NextTimeStamp();
     }
 
     ///
-	DLL_HEADER void ClearSegments()
+    DLL_HEADER void ClearSegments()
     { 
       segments.SetSize(0); 
       timestamp = NextTimeStamp();
     }
-  
+    
     ///
     bool TestOk () const;
 
     void SetAllocSize(int nnodes, int nsegs, int nsel, int nel);
-
+    
 
     DLL_HEADER PointIndex AddPoint (const Point3d & p, int layer = 1);
     DLL_HEADER PointIndex AddPoint (const Point3d & p, int layer, POINTTYPE type);
 
     int GetNP () const { return points.Size(); }
 
+    // [[deprecated("Use Point(PointIndex) instead of int !")]]        
     MeshPoint & Point(int i) { return points.Elem(i); }
     MeshPoint & Point(PointIndex pi) { return points[pi]; }
+    // [[deprecated("Use Point(PointIndex) instead of int !")]]            
     const MeshPoint & Point(int i) const { return points.Get(i); }
     const MeshPoint & Point(PointIndex pi) const { return points[pi]; }
 
@@ -228,16 +234,20 @@ namespace netgen
     DLL_HEADER SegmentIndex AddSegment (const Segment & s);
     void DeleteSegment (int segnr)
     {
-      segments.Elem(segnr)[0] = PointIndex::BASE-1;
-      segments.Elem(segnr)[1] = PointIndex::BASE-1;
+      segments.Elem(segnr)[0].Invalidate();
+      segments.Elem(segnr)[1].Invalidate();
     }
+    /*
     void FullDeleteSegment (int segnr)  // von wem ist das ???
     {
       segments.Delete(segnr-PointIndex::BASE);
     }
+    */
 
     int GetNSeg () const { return segments.Size(); }
+    // [[deprecated("Use LineSegment(SegmentIndex) instead of int !")]]                
     Segment & LineSegment(int i) { return segments.Elem(i); }
+    // [[deprecated("Use LineSegment(SegmentIndex) instead of int !")]]                    
     const Segment & LineSegment(int i) const { return segments.Get(i); }
 
     Segment & LineSegment(SegmentIndex si) { return segments[si]; }
@@ -245,28 +255,41 @@ namespace netgen
     const Segment & operator[] (SegmentIndex si) const { return segments[si]; }
     Segment & operator[] (SegmentIndex si) { return segments[si]; }
 
+    /*
     const Array<Segment> & LineSegments() const { return segments; }
     Array<Segment> & LineSegments() { return segments; }
+    */
+    const auto & LineSegments() const { return segments; }
+    auto & LineSegments() { return segments; }
     
     Array<Element0d> pointelements;  // only via python interface
 
     DLL_HEADER SurfaceElementIndex AddSurfaceElement (const Element2d & el);
+    // write to pre-allocated container, thread-safe
+    DLL_HEADER void SetSurfaceElement (SurfaceElementIndex sei, const Element2d & el);
+    
+    // [[deprecated("Use DeleteSurfaceElement(SurfaceElementIndex) instead of int !")]]
     void DeleteSurfaceElement (int eli)
     { 
       surfelements.Elem(eli).Delete();
-      surfelements.Elem(eli).PNum(1) = -1; 
-      surfelements.Elem(eli).PNum(2) = -1; 
-      surfelements.Elem(eli).PNum(3) = -1; 
+      surfelements.Elem(eli).PNum(1).Invalidate();
+      surfelements.Elem(eli).PNum(2).Invalidate();
+      surfelements.Elem(eli).PNum(3).Invalidate();
       timestamp = NextTimeStamp();
     }
 
     void DeleteSurfaceElement (SurfaceElementIndex eli)
     {
-      DeleteSurfaceElement (int(eli)+1);
+      for (auto & p : surfelements[eli].PNums()) p.Invalidate();
+      surfelements[eli].Delete();
+      timestamp = NextTimeStamp();
     }
 
     int GetNSE () const { return surfelements.Size(); }
+
+    // [[deprecated("Use SurfaceElement(SurfaceElementIndex) instead of int !")]]    
     Element2d & SurfaceElement(int i) { return surfelements.Elem(i); }
+    // [[deprecated("Use SurfaceElement(SurfaceElementIndex) instead of int !")]]        
     const Element2d & SurfaceElement(int i) const { return surfelements.Get(i); }
     Element2d & SurfaceElement(SurfaceElementIndex i) { return surfelements[i]; }
     const Element2d & SurfaceElement(SurfaceElementIndex i) const { return surfelements[i]; }
@@ -284,10 +307,14 @@ namespace netgen
     DLL_HEADER void GetSurfaceElementsOfFace (int facenr, Array<SurfaceElementIndex> & sei) const;
 
     DLL_HEADER ElementIndex AddVolumeElement (const Element & el);
+    // write to pre-allocated container, thread-safe
+    DLL_HEADER void SetVolumeElement (ElementIndex sei, const Element & el);
 
     int GetNE () const { return volelements.Size(); }
 
+    // [[deprecated("Use VolumeElement(ElementIndex) instead of int !")]]    
     Element & VolumeElement(int i) { return volelements.Elem(i); }
+    // [[deprecated("Use VolumeElement(ElementIndex) instead of int !")]]        
     const Element & VolumeElement(int i) const { return volelements.Get(i); }
     Element & VolumeElement(ElementIndex i) { return volelements[i]; }
     const Element & VolumeElement(ElementIndex i) const { return volelements[i]; }
@@ -302,9 +329,8 @@ namespace netgen
     ELEMENTTYPE ElementType (ElementIndex i) const 
     { return (volelements[i].flags.fixed) ? FIXEDELEMENT : FREEELEMENT; }
 
-    const T_VOLELEMENTS & VolumeElements() const { return volelements; }
-    T_VOLELEMENTS & VolumeElements() { return volelements; }
-
+    const auto & VolumeElements() const { return volelements; }
+    auto & VolumeElements() { return volelements; }
 
     ///
     DLL_HEADER double ElementError (int eli, const MeshingParameters & mp) const;
@@ -314,20 +340,16 @@ namespace netgen
     ///
     void ClearLockedPoints ();
 
-    const Array<PointIndex> & LockedPoints() const
-    { return lockedpoints; }
+    const auto & LockedPoints() const { return lockedpoints; }
 
     /// Returns number of domains
-    int GetNDomains() const;
-
+    DLL_HEADER int GetNDomains() const;
     ///
-    int GetDimension() const 
-    { return dimension; }
-    void SetDimension(int dim)
-    { dimension = dim; }
+    int GetDimension() const { return dimension; }
+    void SetDimension (int dim) { dimension = dim; }
 
     /// sets internal tables
-    void CalcSurfacesOfNode ();
+    DLL_HEADER void CalcSurfacesOfNode ();
 
     /// additional (temporarily) fix points 
     void FixPoints (const BitArray & fixpoints);
@@ -403,7 +425,7 @@ namespace netgen
     ///
 	DLL_HEADER void SetMaxHDomain (const Array<double> & mhd);
     ///
-    double GetH (const Point3d & p) const;
+    DLL_HEADER double GetH (const Point3d & p) const;
     ///
     double GetMinH (const Point3d & pmin, const Point3d & pmax);
     ///
@@ -439,7 +461,7 @@ namespace netgen
     /// Refines mesh and projects points to true surface
     // void Refine (int levels, const CSGeometry * geom);
   
-
+    
     bool BoundaryEdge (PointIndex pi1, PointIndex pi2) const
     {
       if(!boundaryedges)
@@ -570,23 +592,38 @@ namespace netgen
 
     ///
     int AddFaceDescriptor(const FaceDescriptor& fd)
-    { return facedecoding.Append(fd); }
+    { facedecoding.Append(fd); return facedecoding.Size(); }
 
     int AddEdgeDescriptor(const EdgeDescriptor & fd)
-    { return edgedecoding.Append(fd) - 1; }
+    { edgedecoding.Append(fd); return edgedecoding.Size() - 1; }
 
     ///
     DLL_HEADER void SetMaterial (int domnr, const string & mat);
     ///
-    const string & GetMaterial (int domnr) const;
+    DLL_HEADER const string & GetMaterial (int domnr) const;
+    DLL_HEADER static string defaultmat;
     const string * GetMaterialPtr (int domnr) const // 1-based
-    { return domnr <= materials.Size() ? materials.Get(domnr) : nullptr; }
+    {
+      return domnr <= materials.Size() ? materials.Get(domnr) : &defaultmat;
+    }
     
     DLL_HEADER void SetNBCNames ( int nbcn );
 
     DLL_HEADER void SetBCName ( int bcnr, const string & abcname );
 
-    const string & GetBCName ( int bcnr ) const;
+    DLL_HEADER const string & GetBCName ( int bcnr ) const;
+
+    DLL_HEADER void SetNCD2Names (int ncd2n);
+    DLL_HEADER void SetCD2Name (int cd2nr, const string & abcname);
+
+    DLL_HEADER const string & GetCD2Name (int cd2nr ) const;
+    DLL_HEADER static string cd2_default_name;
+    string * GetCD2NamePtr (int cd2nr ) const
+    {
+      if (cd2nr < cd2names.Size() && cd2names[cd2nr]) return cd2names[cd2nr];
+      return &cd2_default_name;
+    }
+    size_t GetNCD2Names() const { return cd2names.Size(); }
 
     string * GetBCNamePtr (int bcnr) const
     { return bcnr < bcnames.Size() ? bcnames[bcnr] : nullptr; }
@@ -668,9 +705,10 @@ namespace netgen
 
 
     const MeshTopology & GetTopology () const
-    { return *topology; }
+    { return topology; }
 
-    DLL_HEADER void UpdateTopology (TaskManager tm = &DummyTaskManager);
+    DLL_HEADER void UpdateTopology (TaskManager tm = &DummyTaskManager,
+                                    Tracer tracer = &DummyTracer);
   
     class CurvedElements & GetCurvedElements () const
     { return *curvedelems; }

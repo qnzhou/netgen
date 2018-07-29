@@ -32,6 +32,8 @@ namespace netgen
      int nonconsist = 0;
      for (int k = 1; k <= mesh3d.GetNDomains(); k++)
      {
+       if(mp.only3D_domain_nr && mp.only3D_domain_nr !=k)
+	 continue;
         PrintMessage (3, "Check subdomain ", k, " / ", mesh3d.GetNDomains());
 
         mesh3d.FindOpenElements(k);
@@ -63,6 +65,8 @@ namespace netgen
 
      for (int k = 1; k <= mesh3d.GetNDomains(); k++)
        {
+	 if(mp.only3D_domain_nr && mp.only3D_domain_nr !=k)
+	   continue;
 	 if (multithread.terminate)
            break;
 	 
@@ -71,7 +75,7 @@ namespace netgen
 	 (*testout) << "Meshing subdomain " << k << endl;
 	 
 	 mp.maxh = min2 (globmaxh, mesh3d.MaxHDomain(k));
-	 
+
 	 mesh3d.CalcSurfacesOfNode();
 	 mesh3d.FindOpenElements(k);
 	 
@@ -86,7 +90,7 @@ namespace netgen
 	   {
 	     const Element2d & el = mesh3d[sei];
 	     if (el.IsDeleted() ) continue;
-	     
+
 	     if (mesh3d.GetFaceDescriptor(el.GetIndex()).DomainIn() == k ||
 		 mesh3d.GetFaceDescriptor(el.GetIndex()).DomainOut() == k)
 	       
@@ -99,6 +103,8 @@ namespace netgen
          for (int qstep = 0; qstep <= 3; qstep++)
            // for (int qstep = 0; qstep <= 0; qstep++)  // for hex-filling
 	  {
+            if (qstep == 0 && !mp.try_hexes) continue;
+            
 	    // cout << "openquads = " << mesh3d.HasOpenQuads() << endl;
 	    if (mesh3d.HasOpenQuads())
 	      {
@@ -578,7 +584,7 @@ namespace netgen
     if (res)
       {
 	mesh3d.FindOpenElements();
-	PrintSysError (1, "Open elemetns: ", mesh3d.GetNOpenElements());
+	PrintSysError (1, "Open elements: ", mesh3d.GetNOpenElements());
 	exit (1);
       }
 
@@ -704,7 +710,7 @@ namespace netgen
 	  break;
 
 	PrintMessage (5, nillegal, " illegal tets");
-	optmesh.SplitImprove (mesh3d, OPT_LEGAL);
+        optmesh.SplitImprove (mesh3d, OPT_LEGAL);
 
 	mesh3d.MarkIllegalElements();  // test
 	optmesh.SwapImprove (mesh3d, OPT_LEGAL);

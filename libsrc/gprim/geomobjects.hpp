@@ -17,7 +17,7 @@ namespace netgen
 
 
   template <int D, typename T>
-  class Point : public AlignedAlloc<Point<D,T>>
+  class Point : public ngsimd::AlignedAlloc<Point<D,T>>
   {
 
   protected:
@@ -67,7 +67,7 @@ namespace netgen
   };
 
   template <int D, typename T>
-  class Vec : public AlignedAlloc<Vec<D,T>>
+  class Vec : public ngsimd::AlignedAlloc<Vec<D,T>>
   {
 
   protected:
@@ -150,7 +150,7 @@ namespace netgen
 
 
   template <int H, int W=H, typename T = double>
-  class Mat : public AlignedAlloc<Mat<H,W,T>>
+  class Mat : public ngsimd::AlignedAlloc<Mat<H,W,T>>
   {
 
   protected:
@@ -232,8 +232,13 @@ namespace netgen
     enum EB_TYPE { EMPTY_BOX = 1 };
     Box ( EB_TYPE et ) 
     {
-      pmin = Point<3> (1e99, 1e99, 1e99);
-      pmax = Point<3> (-1e99, -1e99, -1e99);
+      for (int i = 0; i < D; i++)
+        {
+          pmin(i) = 1e99;
+          pmax(i) = -1e99;
+        }
+      // pmin = Point<D> (1e99, 1e99, 1e99);
+      // pmax = Point<D> (-1e99, -1e99, -1e99);
     }
 
     const Point<D> & PMin () const { return pmin; }

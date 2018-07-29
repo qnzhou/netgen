@@ -7,6 +7,7 @@
 #include <meshing.hpp>
 
 #include "stlgeom.hpp"
+#include <vector>
 
 namespace netgen
 {
@@ -348,7 +349,7 @@ STLGeometry *  STLTopology ::Load (istream & ist)
   int cntface = 0;
   int vertex = 0;
   bool badnormals = false;
-
+  
   while (ist.good())
     {
       ist >> buf;
@@ -369,7 +370,7 @@ STLGeometry *  STLTopology ::Load (istream & ist)
 	      >> normal(2);
 	  normal.Normalize();
 	}
-      
+
       if (strcmp (buf, "vertex") == 0)
 	{
 	  ist >> pts[vertex](0)
@@ -404,7 +405,7 @@ STLGeometry *  STLTopology ::Load (istream & ist)
 		   (Dist2 (pts[1], pts[2]) > 1e-16) )
 		
 		{
-		  readtrigs.Append (STLReadTriangle (pts, normal));
+                  readtrigs.Append (STLReadTriangle (pts, normal));
 
 		  if (readtrigs.Size() % 100000 == 0)
 		    PrintMessageCR (3, readtrigs.Size(), " triangles loaded\r");
@@ -424,7 +425,7 @@ STLGeometry *  STLTopology ::Load (istream & ist)
 
   if (badnormals) 
     {
-      PrintWarning("File has normal vectors which differ extremly from geometry->correct with stldoctor!!!");
+      PrintWarning("File has normal vectors which differ extremely from geometry->correct with stldoctor!!!");
     }
 
   geom->InitSTLGeometry(readtrigs);
@@ -592,7 +593,8 @@ void STLTopology :: FindNeighbourTrigs()
 	    }
 	  else
 	    {
-	      enr = topedges.Append (STLTopEdge (pi1, pi2, i, 0));
+	      topedges.Append (STLTopEdge (pi1, pi2, i, 0));
+              enr = topedges.Size();
 	      ht_topedges->Set (i2, enr);
 	      trig.EdgeNum(j) = enr;
 	    }
