@@ -7,8 +7,8 @@ if(NOT WIN32)
     option( USE_NATIVE_ARCH  "build which -march=native" ON)
 endif(NOT WIN32)
 
-option( USE_GUI     "don't build netgen with GUI" ON )
-option( USE_PYTHON  "build with python interface" ON )
+option( USE_GUI     "don't build netgen with GUI" OFF )
+option( USE_PYTHON  "build with python interface" OFF )
 option( USE_MPI     "enable mpi parallelization" OFF )
 option( USE_OCC     "(not supported) compile with OpenCascade geometry kernel" OFF)
 option( USE_JPEG    "enable snapshots using library libjpeg" OFF )
@@ -18,7 +18,7 @@ option( INSTALL_PROFILES "install environment variable settings to /etc/profile.
 option( USE_CCACHE       "use ccache")
 option( USE_INTERNAL_TCL "Compile tcl files into the code and don't install them" ON)
 
-option( USE_SUPERBUILD       "use ccache" ON)
+option( USE_SUPERBUILD       "use ccache" OFF )
 
 set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}" "${CMAKE_CURRENT_SOURCE_DIR}/cmake/cmake_modules")
 
